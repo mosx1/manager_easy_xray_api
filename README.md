@@ -7,3 +7,20 @@ COLUMN hash (text)
 COLUMN data (timestamp)
 
 Рекомендую обновлять токен раз в час.
+
+Апи должно лежать в той же папке что и папка easy-xray-main, либо отредактируйте пути так как вы положили проекты
+Для конфигурации создайте фаил config.ini
+
+[Paths]
+jsonConfig = ./easy-xray-main/conf/
+
+[DataBase]
+dialect =
+driver =
+username =
+password =
+host =
+database =
+
+[Xray]
+hostName =
