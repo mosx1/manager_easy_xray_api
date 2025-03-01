@@ -15,7 +15,7 @@ COLUMN data (timestamp)
 jsonConfig = ./easy-xray-main/conf/
 
 [DataBase]
-dialect =
+dialect = \n
 driver =
 username =
 password =
