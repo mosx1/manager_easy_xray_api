@@ -11,7 +11,7 @@ COLUMN data (timestamp)
 
 Апи должно лежать в той же папке что и папка easy-xray-main, либо отредактируйте пути так как вы положили проекты
 Для конфигурации создайте фаил config.ini
-
+```
 [Paths]
 jsonConfig = ./easy-xray-main/conf/
 
@@ -25,3 +25,4 @@ database = Unknown
 
 [Xray]
 hostName = Unknown
+```
