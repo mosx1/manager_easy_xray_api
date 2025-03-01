@@ -15,12 +15,12 @@ COLUMN data (timestamp)
 jsonConfig = ./easy-xray-main/conf/
 
 [DataBase]
-dialect = \n
-driver =
-username =
-password =
-host =
-database =
+dialect = Unknown
+driver = Unknown
+username = Unknown
+password = Unknown
+host = Unknown
+database = Unknown
 
 [Xray]
-hostName =
+hostName = Unknown
