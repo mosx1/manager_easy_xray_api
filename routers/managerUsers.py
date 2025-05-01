@@ -30,7 +30,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
-    if suspendUser(userId):
+    if await suspendUser(userId):
         return {"success": True}
     return{"success": False}
 
@@ -40,7 +40,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
-    if resumeUser(userId):
+    if await resumeUser(userId):
         return {"success": True}
     return{"success": False}
 
@@ -50,6 +50,6 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
-    if delUser(userId):
+    if await delUser(userId):
         return {"success": True}
     return{"success": False}
