@@ -87,15 +87,15 @@ async def resumeUser(userId: str):
     
 
 
-async def del_users(user_ids: list[int]) -> bool:
+async def del_users(user_ids: set[int]) -> bool:
     """
         Удаляет пользователей с сервера
     """
     try:
-        users: str = ' '.join(user_ids)
         subprocess.check_output(
             (
-                f"/root/easy-xray-main/ex.sh del {users}"
+                "/root/easy-xray-main/ex.sh del",
+                *user_ids
             ),
             shell=True
         )
