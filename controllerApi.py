@@ -92,10 +92,11 @@ async def del_users(user_ids: set[int]) -> bool:
         Удаляет пользователей с сервера
     """
     try:
+
         subprocess.check_output(
             (
                 "/root/easy-xray-main/ex.sh del",
-                *user_ids
+                *[str(user_id) for user_id in user_ids]
             ),
             shell=True
         )
