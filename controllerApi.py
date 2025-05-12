@@ -2,17 +2,21 @@ import subprocess, json, os
 from configparser import ConfigParser
 
 
-async def add_vpn_user(userId: str):
+async def add_user(user_id: int) -> str:
     """
         Создает пользоавтеля в xray
     """
-
     try:
-        subprocess.check_output(("/root/easy-xray-main/ex.sh add {}".format(userId)), shell=True)
+        subprocess.check_output(
+            (
+                "/root/easy-xray-main/ex.sh add {}".format(user_id)
+            ), 
+            shell=True
+        )
     except subprocess.CalledProcessError as e:
         return e.output
 
-    return await createLink(userId)
+    return await createLink(user_id)
 
 
 
@@ -83,15 +87,22 @@ async def resumeUser(userId: str):
     
 
 
-async def delUser(userId: str):
+async def del_users(user_ids: set[int]) -> bool:
     """
-        Удаляет пользователя с сервера
+        Удаляет пользователей с сервера
     """
     try:
-        subprocess.check_output(("/root/easy-xray-main/ex.sh del {}".format(userId)), shell=True)
+        subprocess.check_output(
+            (
+                "/root/easy-xray-main/ex.sh del {}".format(
+                    ' '.join(user_ids)
+                )
+            ),
+            shell=True
+        )
         return True
     except subprocess.CalledProcessError as e:
-            return False
+        return False
     
 
 
@@ -99,6 +110,7 @@ async def delUser(userId: str):
 async def getStatistic():
     """
         Получает статистику по пользователям
+        
     """
 
     dictRes = {}
@@ -135,6 +147,3 @@ async def checkExistsUser(userId: str) -> bool:
             if client['email'] == email:
                 return True
     return False
-
-
-
