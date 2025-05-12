@@ -50,7 +50,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 
 
 
-@router.get("/del")
+@router.post("/del")
 async def _(data: DelUsers, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
