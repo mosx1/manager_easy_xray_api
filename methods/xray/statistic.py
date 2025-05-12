@@ -1,6 +1,6 @@
 import json, subprocess
 
-from ...entities.statistic import TrafficType
+from entities.statistic import TrafficType
 
 
 def get_traffic(type: TrafficType) -> int:
