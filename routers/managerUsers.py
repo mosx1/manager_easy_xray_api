@@ -54,6 +54,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 async def _(data: DelUsers, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
+    print(data.user_ids)
     if await del_users(data.user_ids):
         return {"success": True}
     return{"success": False}
