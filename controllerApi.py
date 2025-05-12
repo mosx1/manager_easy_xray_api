@@ -38,13 +38,14 @@ async def createLink(userId: str):
         server_name = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["serverName"]
         short_id = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["shortId"]
 
-        link = "vless://{}@{}:{}?fragment=&security=reality&encryption=none&pbk={}&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni={}&sid={}#vpnKuzMosDE1".format(
+        link = "vless://{}@{}:{}?fragment=&security=reality&encryption=none&pbk={}&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni={}&sid={}#Выгодный-VPN-{}".format(
             id,
             config['Xray']['hostName'],
             port,
             public_key,
             server_name,
-            short_id
+            short_id,
+            config['Xray']['hostName']
         )
         return link
     
