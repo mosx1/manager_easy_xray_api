@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class DelUsers(BaseModel):
-    user_ids: set[int]
+    user_ids: list[int]
     token: str
 
 

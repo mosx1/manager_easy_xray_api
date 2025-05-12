@@ -87,7 +87,7 @@ async def resumeUser(userId: str):
     
 
 
-async def del_users(user_ids: set[int]) -> bool:
+async def del_users(user_ids: list[int]) -> bool:
     """
         Удаляет пользователей с сервера
     """
