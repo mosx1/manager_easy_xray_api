@@ -2,8 +2,6 @@ import uvicorn, http
 
 from fastapi import FastAPI
 
-from controllerApi import getStatistic
-
 from db.db import engine
 
 from sqlmodel import SQLModel
@@ -21,13 +19,6 @@ app.include_router(router)
 async def _():
     
     return{"Glory to Russia": "FUCK YOU"}
-
-
-
-@app.get("/597730754/stat")
-def _():
-    return getStatistic()
-
 
 
 @app.get("/initdb/")
