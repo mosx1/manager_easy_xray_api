@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from controllerApi import add_user, suspendUser, resumeUser, del_users
+from controllerApi import add_user, suspendUser, resumeUser, del_users, suspend_users
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,7 @@ from methods.methods import successAuth
 from methods.xray.statistic import get_statustic_to_users
 
 from entities.statistic import RequestStatustic
-from entities.manager_users import DelUsers
+from entities.manager_users import DelUsers, SuspendUsers
 
 
 router = APIRouter()
@@ -30,11 +30,11 @@ async def _(token: str, user_id: int, db: AsyncSession = Depends(get_session)) -
 
 
 
-@router.get("/suspend")
-async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
-    if not await successAuth(db, token):
+@router.post("/suspend")
+async def _(data: SuspendUsers, db: AsyncSession = Depends(get_session)) -> dict[str, bool]:
+    if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
-    if await suspendUser(userId):
+    if await suspend_users(data.user_ids):
         return {"success": True}
     return{"success": False}
 

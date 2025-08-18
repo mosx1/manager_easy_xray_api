@@ -87,6 +87,22 @@ async def resumeUser(userId: str):
         return False
     
 
+async def suspend_users(user_ids: set[int]) -> bool:
+    """
+        Приостанавливает пользователей на сервере
+    """
+    try:
+
+        users: str = ' '.join([str(user_id) for user_id in user_ids])
+
+        subprocess.check_output(
+            (f"/root/easy-xray-main/ex.sh suspend {users}"),
+            shell=True
+        )
+        return True
+    except Exception as e:
+        return False
+
 
 async def del_users(user_ids: set[int]) -> bool:
     """
@@ -97,9 +113,7 @@ async def del_users(user_ids: set[int]) -> bool:
         users: str = ' '.join([str(user_id) for user_id in user_ids])
 
         subprocess.check_output(
-            (
-                f"/root/easy-xray-main/ex.sh del {users}"
-            ),
+            (f"/root/easy-xray-main/ex.sh del {users}"),
             shell=True
         )
         return True
