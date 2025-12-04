@@ -35,7 +35,7 @@ class ManagerConfig:
             )
             short_id: str = cls._get_rand_str(16)
             
-            client: dict = config_xray_data['inbounds'][0]['settings']['clients'][0]
+            client: dict = config_xray_data['inbounds'][0]['settings']['clients'][0].copy()
             client['id'] = client_id
             client['email'] = f"{user_id}@kuzmos.ru"
             config_xray_data['inbounds'][0]['settings']['clients'].append(client)
