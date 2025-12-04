@@ -1,4 +1,4 @@
-import json, random, string, os
+import json, random, string, os, secrets
 
 from configparser import ConfigParser
 
@@ -15,8 +15,6 @@ class ManagerConfig:
         chars = string.ascii_lowercase + string.digits
         return ''.join(random.choice(chars) for _ in range(length))
     
-    def _get_rand_str_16(cls, length:int) -> str:
-        return ''.join(random.choice("0123456789abcdef") for _ in range(length))
 
     @classmethod
     async def add(cls, user_id: str) -> str | None:
@@ -36,7 +34,7 @@ class ManagerConfig:
                 cls._get_rand_str(4),
                 cls._get_rand_str(12)
             )
-            short_id: str = cls._get_rand_str_16(16)
+            short_id: str = secrets.token_hex(16)
             
             client: dict = config_xray_data['inbounds'][0]['settings']['clients'][0].copy()
             client['id'] = client_id
