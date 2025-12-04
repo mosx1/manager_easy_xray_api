@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from controllerApi import add_user, suspendUser, resumeUser, del_users, suspend_users
+from controllerApi import add_user, resumeUser, del_users, suspend_users
+from methods.xhttp.manager import ManagerConfig
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +23,7 @@ async def _(token: str, user_id: int, db: AsyncSession = Depends(get_session)) -
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
     
-    link  = await add_user(user_id)
+    link: str  = await ManagerConfig.add(user_id)
 
     if link:
         return {"success": True, "link": link}
@@ -34,7 +35,7 @@ async def _(token: str, user_id: int, db: AsyncSession = Depends(get_session)) -
 async def _(data: SuspendUsers, db: AsyncSession = Depends(get_session)) -> dict[str, bool]:
     if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
-    if await suspend_users(data.user_ids):
+    if await ManagerConfig.delete(data.user_ids):
         return {"success": True}
     return{"success": False}
 
@@ -54,7 +55,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
 async def _(data: DelUsers, db: AsyncSession = Depends(get_session)):
     if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
-    if await del_users(data.user_ids):
+    if await ManagerConfig.delete(data.user_ids):
         return {"success": True}
     return{"success": False}
 
@@ -65,6 +66,7 @@ async def _(data: RequestStatustic, db: AsyncSession = Depends(get_session)):
     """
         Статистика входящего трафика по id пользователя
     """
+    
     if not await successAuth(db, data.token):
         return {'success': 'Ошибка авторизации'}
     return {"link": get_statustic_to_users(data.user_ids)}
