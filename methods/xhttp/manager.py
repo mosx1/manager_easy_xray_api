@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 class ManagerConfig:
 
-    path_file = 'config.json'
+    path_file = '/usr/local/etc/xray/config.json'
     
 
     @classmethod
@@ -88,7 +88,6 @@ class ManagerConfig:
                     del xtls_clients[i]
                     del xhttp_clients[i]
                     del shortIds[i]
-                    
 
         config_xray_data['inbounds'][0]['settings']['clients'] = xtls_clients
         config_xray_data['inbounds'][1]['settings']['clients'] = xhttp_clients
@@ -98,5 +97,3 @@ class ManagerConfig:
             json.dump(config_xray_data, config_xray_file, indent=4)
         
         os.system('service xray restart')
-
-ManagerConfig.delete(["test"])
