@@ -23,14 +23,14 @@ class ManagerConfig:
 
             config_xray_data: dict = json.load(config_xray_file)
             client_id: str = '{}-{}-{}-{}-{}'.format(
-                secrets.token_hex(8),
                 secrets.token_hex(4),
-                secrets.token_hex(4),
-                secrets.token_hex(4),
-                secrets.token_hex(12)
+                secrets.token_hex(2),
+                secrets.token_hex(2),
+                secrets.token_hex(2),
+                secrets.token_hex(6)
             )
-            short_id: str = secrets.token_hex(16)
-            
+            short_id: str = secrets.token_hex(8)
+
             client: dict = config_xray_data['inbounds'][0]['settings']['clients'][0].copy()
             client['id'] = client_id
             client['email'] = f"{user_id}@kuzmos.ru"
