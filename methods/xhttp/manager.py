@@ -4,8 +4,6 @@ from configparser import ConfigParser
 
 from urllib.parse import quote
 
-from repository.config_xray import writeConfigDB
-
 class ManagerConfig:
 
     path_file = '/usr/local/etc/xray/config.json'
