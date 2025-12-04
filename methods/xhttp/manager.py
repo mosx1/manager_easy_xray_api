@@ -1,4 +1,4 @@
-import json, random, string, os, secrets
+import json, os, secrets
 
 from configparser import ConfigParser
 
@@ -9,11 +9,6 @@ from repository.config_xray import writeConfigDB
 class ManagerConfig:
 
     path_file = '/usr/local/etc/xray/config.json'
-
-    @classmethod
-    def _get_rand_str(cls, length:int) -> str:
-        chars = string.ascii_lowercase + string.digits
-        return ''.join(random.choice(chars) for _ in range(length))
     
 
     @classmethod
@@ -28,11 +23,11 @@ class ManagerConfig:
 
             config_xray_data: dict = json.load(config_xray_file)
             client_id: str = '{}-{}-{}-{}-{}'.format(
-                cls._get_rand_str(8),
-                cls._get_rand_str(4),
-                cls._get_rand_str(4),
-                cls._get_rand_str(4),
-                cls._get_rand_str(12)
+                secrets.token_hex(8),
+                secrets.token_hex(4),
+                secrets.token_hex(4),
+                secrets.token_hex(4),
+                secrets.token_hex(12)
             )
             short_id: str = secrets.token_hex(16)
             
