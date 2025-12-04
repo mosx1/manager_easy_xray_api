@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 class ManagerConfig:
 
-    path_file = '/usr/local/etc/xray/config.json'
+    path_file = 'config.json'
     
 
     @classmethod
@@ -77,17 +77,18 @@ class ManagerConfig:
 
         with open(cls.path_file) as config_xray_file:
             config_xray_data: dict = json.load(config_xray_file)
-            xtls_clients: list = config_xray_data['inbounds'][0]['settings']['clients']
-            xhttp_clients: list = config_xray_data['inbounds'][1]['settings']['clients']
-            shortIds: list = config_xray_data['inbounds'][0]['streamSettings']['realitySettings']['shortIds']
+            xtls_clients: list = config_xray_data['inbounds'][0]['settings']['clients'].copy()
+            xhttp_clients: list = config_xray_data['inbounds'][1]['settings']['clients'].copy()
+            shortIds: list = config_xray_data['inbounds'][0]['streamSettings']['realitySettings']['shortIds'].copy()
 
         for i, client in enumerate(xtls_clients.copy()):
             for user_id in user_ids:
                 if client['email'] == f"{user_id}@kuzmos.ru":
 
-                    xtls_clients.remove(i)
-                    xhttp_clients.remove(i)
-                    shortIds.remove(i)
+                    del xtls_clients[i]
+                    del xhttp_clients[i]
+                    del shortIds[i]
+                    
 
         config_xray_data['inbounds'][0]['settings']['clients'] = xtls_clients
         config_xray_data['inbounds'][1]['settings']['clients'] = xhttp_clients
@@ -97,3 +98,5 @@ class ManagerConfig:
             json.dump(config_xray_data, config_xray_file, indent=4)
         
         os.system('service xray restart')
+
+ManagerConfig.delete(["test"])
