@@ -97,3 +97,5 @@ class ManagerConfig:
             json.dump(config_xray_data, config_xray_file, indent=4)
         
         os.system('service xray restart')
+        
+        return True
