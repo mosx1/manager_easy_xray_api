@@ -1,4 +1,4 @@
-import json, os, secrets
+import json, os, secrets, uuid
 
 from configparser import ConfigParser
 
@@ -20,13 +20,7 @@ class ManagerConfig:
                 return link 
 
             config_xray_data: dict = json.load(config_xray_file)
-            client_id: str = '{}-{}-{}-{}-{}'.format(
-                secrets.token_hex(4),
-                secrets.token_hex(2),
-                secrets.token_hex(2),
-                secrets.token_hex(2),
-                secrets.token_hex(6)
-            )
+            client_id: str = uuid.uuid4()
             short_id: str = secrets.token_hex(8)
 
             client: dict = config_xray_data['inbounds'][0]['settings']['clients'][0].copy()
@@ -97,5 +91,5 @@ class ManagerConfig:
             json.dump(config_xray_data, config_xray_file, indent=4)
         
         os.system('service xray restart')
-        
+
         return True
