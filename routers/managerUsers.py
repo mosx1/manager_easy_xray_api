@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from controllerApi import add_user, suspendUser, resumeUser, del_users, suspend_users
+from controllerApi import add_user, resumeUser, del_users, suspend_users
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

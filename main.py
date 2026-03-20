@@ -29,12 +29,13 @@ async def _():
 
 
 if __name__ == "__main__":
+
     conn = http.client.HTTPConnection("ifconfig.me")
     conn.request("GET", "/ip")
     url = conn.getresponse().read().decode("utf-8")  
     uvicorn.run(
         "main:app",
-        host=url,
+        host="0.0.0.0",
         port=8081,
         reload=False
     )
