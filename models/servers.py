@@ -12,7 +12,7 @@ class Servers(SQLModel, table=True):
     links: str = Field()
 
 
-class ConfigsServers(SQLModel, table=True):
+class Configs_Servers(SQLModel, table=True):
 
     id: int = Field(primary_key=True)
     server_id: int = Field(foreign_key="servers.id")
