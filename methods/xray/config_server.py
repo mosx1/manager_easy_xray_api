@@ -1,11 +1,10 @@
 from configparser import ConfigParser
 
 from sqlalchemy import select, update, insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.db import async_session
 
-from models.servers import Servers, ConfigsServers
+from models.servers import Servers, Configs_Servers
 
 
 async def get_id_server_by_hostname(host_name: str) -> int | None:
@@ -17,13 +16,13 @@ async def get_id_server_by_hostname(host_name: str) -> int | None:
 
 async def write_config(server_id: int, text_file: str):
     async with async_session() as session:
-        configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id))
+        configs = await session.execute(select(Configs_Servers).where(Configs_Servers.server_id == server_id))
         configs = configs.scalar()
         if configs:
-            await session.execute(update(ConfigsServers).where(ConfigsServers.server_id == server_id).values(config=text_file))
+            await session.execute(update(Configs_Servers).where(Configs_Servers.server_id == server_id).values(config=text_file))
         else:
             await session.execute(
-                insert(ConfigsServers).values(
+                insert(Configs_Servers).values(
                     server_id=server_id,
                     config=text_file
                 )
