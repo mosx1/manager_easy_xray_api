@@ -3,30 +3,30 @@ from configparser import ConfigParser
 from sqlalchemy import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.db import get_session
+from db.db import async_session
 
 from models.servers import Servers, ConfigsServers
 
 
 async def get_id_server_by_hostname(host_name: str) -> int | None:
-    session: AsyncSession = get_session()
-    server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%"))).scalar()
-    return server.id
+    with async_session() as session:
+        server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%"))).scalar()
+        return server.id
 
 
 async def write_config(server_id: int, text_file: str):
-    session: AsyncSession = get_session()
-    configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id)).scalar()
-    if configs:
-        await session.execute(update(ConfigParser).where(ConfigsServers.server_id == server_id).values(config=text_file))
-    else:
-        await session.execute(
-            insert(ConfigsServers).values(
-                server_id=server_id,
-                config=text_file
+    with async_session() as session:
+        configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id)).scalar()
+        if configs:
+            await session.execute(update(ConfigParser).where(ConfigsServers.server_id == server_id).values(config=text_file))
+        else:
+            await session.execute(
+                insert(ConfigsServers).values(
+                    server_id=server_id,
+                    config=text_file
+                )
             )
-        )
-    await session.commit()
+        await session.commit()
 
 
 async def backup_config_server():
