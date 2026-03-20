@@ -9,13 +9,13 @@ from models.servers import Servers, ConfigsServers
 
 
 async def get_id_server_by_hostname(host_name: str) -> int | None:
-    session: AsyncSession = await get_session()
+    session: AsyncSession = get_session()
     server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%"))).scalar()
     return server.id
 
 
 async def write_config(server_id: int, text_file: str):
-    session: AsyncSession = await get_session()
+    session: AsyncSession = get_session()
     configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id)).scalar()
     if configs:
         await session.execute(update(ConfigParser).where(ConfigsServers.server_id == server_id).values(config=text_file))
