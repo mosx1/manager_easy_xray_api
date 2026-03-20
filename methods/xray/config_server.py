@@ -10,15 +10,17 @@ from models.servers import Servers, ConfigsServers
 
 async def get_id_server_by_hostname(host_name: str) -> int | None:
     async with async_session() as session:
-        server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%"))).scalar()
+        server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%")))
+        server = server.scalar()
         return server.id
 
 
 async def write_config(server_id: int, text_file: str):
     async with async_session() as session:
-        configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id)).scalar()
+        configs = await session.execute(select(ConfigsServers).where(ConfigsServers.server_id == server_id))
+        configs = configs.scalar()
         if configs:
-            await session.execute(update(ConfigParser).where(ConfigsServers.server_id == server_id).values(config=text_file))
+            await session.execute(update(ConfigsServers).where(ConfigsServers.server_id == server_id).values(config=text_file))
         else:
             await session.execute(
                 insert(ConfigsServers).values(
