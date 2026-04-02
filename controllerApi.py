@@ -9,7 +9,7 @@ async def add_user(user_id: int) -> str:
     try:
         subprocess.check_output(
             (
-                "/root/easy-xray-main/ex.sh add {}".format(user_id)
+                "./root/easy-xray-main/ex.sh add {}".format(user_id)
             ), 
             shell=True
         )
@@ -68,7 +68,7 @@ async def suspendUser(userId: str) -> bool:
         Приостонавливает пользователя в xray
     """
     try:
-        subprocess.check_output(("/root/easy-xray-main/ex.sh suspend {}".format(userId)), shell=True)
+        subprocess.check_output(("./root/easy-xray-main/ex.sh suspend {}".format(userId)), shell=True)
         return True
     
     except subprocess.CalledProcessError as e:
@@ -81,7 +81,7 @@ async def resumeUser(userId: str):
         Возобновляет доступ пользователя к xray
     """
     try:
-        subprocess.check_output(("/root/easy-xray-main/ex.sh resume {}".format(userId)), shell=True)
+        subprocess.check_output(("./root/easy-xray-main/ex.sh resume {}".format(userId)), shell=True)
         return True
     except subprocess.CalledProcessError as e:
         return False
@@ -96,7 +96,7 @@ async def suspend_users(user_ids: set[int]) -> bool:
         users: str = ' '.join([str(user_id) for user_id in user_ids])
 
         subprocess.check_output(
-            (f"/root/easy-xray-main/ex.sh suspend {users}"),
+            (f"./root/easy-xray-main/ex.sh suspend {users}"),
             shell=True
         )
         return True
@@ -113,7 +113,7 @@ async def del_users(user_ids: set[int]) -> bool:
         users: str = ' '.join([str(user_id) for user_id in user_ids])
 
         subprocess.check_output(
-            (f"/root/easy-xray-main/ex.sh del {users}"),
+            (f"./root/easy-xray-main/ex.sh del {users}"),
             shell=True
         )
         return True
@@ -131,7 +131,7 @@ async def getStatistic():
 
     dictRes = {}
     subprocess.check_output(("rm stats.log",), shell=True)
-    os.system("/root/easy-xray-main/ex.sh stats")
+    os.system("./root/easy-xray-main/ex.sh stats")
 
     with open('stats.log') as fileLog:
         listReversFileLog = reversed(fileLog.readlines())
