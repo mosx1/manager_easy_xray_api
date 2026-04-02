@@ -3,3 +3,4 @@ __pycache__/
 /.env/
 *.ini
 .DS_Store
+*config.json

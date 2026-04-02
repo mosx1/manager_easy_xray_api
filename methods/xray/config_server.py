@@ -1,0 +1,41 @@
+from configparser import ConfigParser
+
+from sqlalchemy import select, update, insert
+
+from db.db import async_session
+
+from models.servers import Servers, Configs_Servers
+
+
+async def get_id_server_by_hostname(host_name: str) -> int | None:
+    async with async_session() as session:
+        server: Servers | None = await session.execute(select(Servers).where(Servers.links.ilike(f"%{host_name}%")))
+        server = server.scalar()
+        return server.id
+
+
+async def write_config(server_id: int, text_file: str):
+    async with async_session() as session:
+        configs = await session.execute(select(Configs_Servers).where(Configs_Servers.server_id == server_id))
+        configs = configs.scalar()
+        if configs:
+            await session.execute(update(Configs_Servers).where(Configs_Servers.server_id == server_id).values(config=text_file))
+        else:
+            await session.execute(
+                insert(Configs_Servers).values(
+                    server_id=server_id,
+                    config=text_file
+                )
+            )
+        await session.commit()
+
+
+async def backup_config_server():
+    
+    config = ConfigParser()
+    config.read("config.ini")
+
+    server_id: int = await get_id_server_by_hostname(config["Xray"].get("hostName"))
+
+    with open('/usr/local/etc/xray/config.json', 'r') as config_file:
+        await write_config(server_id, config_file.read())
