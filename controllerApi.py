@@ -20,6 +20,273 @@ async def add_user(user_id: int) -> str:
 
 
 
+def _client_link_config(user_id, port, public_key, server_name, short_id, host_name):
+    return {
+        "log": {},
+        "inbounds": [
+            {
+                "settings": {
+                    "udp": True,
+                    "userLevel": 8,
+                    "auth": "noauth",
+                },
+                "listen": "127.0.0.1",
+                "port": 10808,
+                "tag": "socks",
+                "protocol": "socks",
+            },
+            {
+                "settings": {
+                    "userLevel": 8,
+                    "udp": True,
+                    "auth": "noauth",
+                },
+                "listen": "127.0.0.1",
+                "port": 1087,
+                "tag": "directSocks",
+                "protocol": "socks",
+            },
+            {
+                "settings": {
+                    "address": "[::1]",
+                },
+                "listen": "[::1]",
+                "port": 62789,
+                "tag": "api",
+                "protocol": "dokodemo-door",
+            },
+        ],
+        "outbounds": [
+            {
+                "tag": "proxy",
+                "protocol": "vless",
+                "streamSettings": {
+                    "sockopt": {
+                        "dialerProxy": "fragment",
+                        "tcpNoDelay": True,
+                    },
+                    "network": "tcp",
+                    "security": "reality",
+                    "tcpSettings": {
+                        "header": {
+                            "type": "none",
+                        },
+                    },
+                    "realitySettings": {
+                        "publicKey": public_key,
+                        "serverName": server_name,
+                        "show": False,
+                        "mldsa65Verify": "",
+                        "spiderX": "",
+                        "shortId": short_id,
+                        "fingerprint": "firefox",
+                    },
+                },
+                "settings": {
+                    "vnext": [
+                        {
+                            "port": port,
+                            "users": [
+                                {
+                                    "encryption": "none",
+                                    "flow": "xtls-rprx-vision",
+                                    "id": user_id,
+                                    "level": 8,
+                                    "email": "",
+                                },
+                            ],
+                            "address": host_name,
+                        },
+                    ],
+                },
+                "mux": {
+                    "concurrency": 50,
+                    "xudpConcurrency": 128,
+                    "xudpProxyUDP443": "allow",
+                    "enabled": False,
+                },
+            },
+            {
+                "settings": {
+                    "userLevel": 8,
+                    "fragment": {
+                        "length": "80-250",
+                        "interval": "10-100",
+                        "packets": "tlshello",
+                    },
+                },
+                "streamSettings": {
+                    "sockopt": {
+                        "tcpNoDelay": True,
+                    },
+                },
+                "tag": "fragment",
+                "protocol": "freedom",
+            },
+        ],
+        "api": {
+            "tag": "api",
+            "services": [
+                "StatsService",
+            ],
+        },
+        "dns": {
+            "queryStrategy": "UseIP",
+            "servers": [
+                {
+                    "address": "8.8.8.8",
+                    "skipFallback": False,
+                },
+            ],
+            "tag": "dnsQuery",
+            "disableCache": True,
+            "disableFallbackIfMatch": True,
+            "hosts": {
+                "dns.quad9.net": [
+                    "9.9.9.9",
+                    "149.112.112.112",
+                    "2620:fe::fe",
+                    "2620:fe::9",
+                ],
+                "one.one.one.one": [
+                    "1.1.1.1",
+                    "1.0.0.1",
+                    "2606:4700:4700::1111",
+                    "2606:4700:4700::1001",
+                ],
+                "dns.google": [
+                    "8.8.8.8",
+                    "8.8.4.4",
+                    "2001:4860:4860::8888",
+                    "2001:4860:4860::8844",
+                ],
+                "cloudflare-dns.com": [
+                    "104.16.248.249",
+                    "104.16.249.249",
+                    "2606:4700::6810:f8f9",
+                    "2606:4700::6810:f9f9",
+                ],
+                "dns.alidns.com": [
+                    "223.5.5.5",
+                    "223.6.6.6",
+                    "2400:3200::1",
+                    "2400:3200:baba::1",
+                ],
+                "dns.cloudflare.com": [
+                    "104.16.132.229",
+                    "104.16.133.229",
+                    "2606:4700::6810:84e5",
+                    "2606:4700::6810:85e5",
+                ],
+                "common.dot.dns.yandex.net": [
+                    "77.88.8.8",
+                    "77.88.8.1",
+                    "2a02:6b8::feed:0ff",
+                    "2a02:6b8:0:1::feed:0ff",
+                ],
+                "dot.pub": [
+                    "1.12.12.12",
+                    "120.53.53.53",
+                ],
+            },
+            "disableFallback": True,
+        },
+        "stats": {},
+        "routing": {
+            "balancers": [],
+            "domainStrategy": "AsIs",
+            "rules": [
+                {
+                    "type": "field",
+                    "outboundTag": "direct",
+                    "domain": [
+                        "geosite:private",
+                        "geosite:apple",
+                    ],
+                    "ruleTag": "rule-0",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "api",
+                    ],
+                    "outboundTag": "api",
+                    "ruleTag": "rule-1",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "dnsQuery",
+                    ],
+                    "outboundTag": "proxy",
+                    "ruleTag": "rule-2",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "directSocks",
+                    ],
+                    "outboundTag": "direct",
+                    "ruleTag": "rule-3",
+                },
+                {
+                    "type": "field",
+                    "outboundTag": "direct",
+                    "domain": [
+                        "geosite:private",
+                        "geosite:apple",
+                    ],
+                    "ruleTag": "rule-4",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "api",
+                    ],
+                    "outboundTag": "api",
+                    "ruleTag": "rule-5",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "dnsQuery",
+                    ],
+                    "outboundTag": "proxy",
+                    "ruleTag": "rule-6",
+                },
+                {
+                    "type": "field",
+                    "inboundTag": [
+                        "directSocks",
+                    ],
+                    "outboundTag": "direct",
+                    "ruleTag": "rule-7",
+                },
+            ],
+        },
+        "policy": {
+            "system": {
+                "statsOutboundDownlink": True,
+                "statsInboundUplink": True,
+                "statsOutboundUplink": True,
+                "statsInboundDownlink": True,
+            },
+            "levels": {
+                "8": {
+                    "statsUserUplink": False,
+                    "handshake": 4,
+                    "connIdle": 30,
+                    "uplinkOnly": 1,
+                    "bufferSize": 0,
+                    "statsUserDownlink": False,
+                    "downlinkOnly": 1,
+                },
+            },
+        },
+        "transport": {},
+    }
+
+
 async def createLink(userId: str):
     """
         Создает ссылку для пользователя по конфигурации
@@ -37,16 +304,16 @@ async def createLink(userId: str):
         public_key = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["publicKey"]
         server_name = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["serverName"]
         short_id = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["shortId"]
-
-        link = "vless://{}@{}:{}?fragment=50-100,10-20,tlshello,100-200&noises=rand,10-20,10-16,ip&security=reality&encryption=none&pbk={}&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni={}&sid={}#Выгодный-VPN-{}".format(
+        host_name = config['Xray']['hostName']
+        link_config = _client_link_config(
             id,
-            config['Xray']['hostName'],
             port,
             public_key,
             server_name,
             short_id,
-            config['Xray']['hostName']
+            host_name,
         )
+        link = json.dumps(link_config, ensure_ascii=False)
         return link
     
 
