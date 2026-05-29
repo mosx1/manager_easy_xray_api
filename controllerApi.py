@@ -23,6 +23,7 @@ async def add_user(user_id: int) -> str:
 def _client_link_config(user_id, port, public_key, server_name, short_id, host_name):
     return {
         "log": {},
+        "remarks": f"Выгодный ВПН - {host_name}",
         "inbounds": [
             {
                 "settings": {
