@@ -1,4 +1,4 @@
-import uvicorn, http
+import uvicorn
 
 from fastapi import FastAPI
 
