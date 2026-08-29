@@ -344,7 +344,7 @@ async def suspendUser(userId: str) -> bool:
 
 
 
-async def resumeUser(userId: str):
+async def resumeUser(userId: int):
     """
         Возобновляет доступ пользователя к xray
     """

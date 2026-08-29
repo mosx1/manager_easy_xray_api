@@ -520,7 +520,6 @@ class EasyXray:
         mode: Literal["del", "suspend"] = "del",
     ) -> list[str]:
         """Delete or suspend users."""
-        self.check_command("jq", "needed for operations with configs")
         server_path = self.conf_dir / "config_server.json"
         if not server_path.is_file():
             raise EasyXrayError("server config not found")
@@ -826,8 +825,7 @@ class EasyXray:
         """Download and install xray using the official install script."""
         if os.geteuid() != 0:
             raise EasyXrayError(
-                "you should have root privileges to install xray, try\n"
-                "sudo ./ex.sh install"
+                "you should have root privileges to install xray, try"
             )
 
         if shutil.which("xray") and not force_reinstall:

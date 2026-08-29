@@ -1,6 +1,7 @@
 __pycache__/
 /venv/
 .venv*/
+.uv-venv/
 /.env/
 *.ini
 .DS_Store

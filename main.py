@@ -1,9 +1,10 @@
 import uvicorn
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from db.db import engine
-
+from deps.auth import AuthenticationError
 from sqlmodel import SQLModel
 
 from routers import router
@@ -11,9 +12,13 @@ from routers import router
 
 app = FastAPI()
 
+
+@app.exception_handler(AuthenticationError)
+async def auth_exception_handler(_, __: AuthenticationError):
+    return JSONResponse({"success": "Ошибка авторизации"}, 401)
+
+
 app.include_router(router)
-
-
 
 @app.get("/config")
 async def _():
