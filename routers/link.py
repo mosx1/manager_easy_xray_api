@@ -8,7 +8,7 @@ from db.db import get_session
 
 from methods.methods import successAuth
 
-from controllerApi import createLink
+from controllerApi import create_link
 
 
 router = APIRouter()
@@ -22,7 +22,7 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
     """
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
-    return RedirectResponse(f"v2raytun://import/{ await createLink(str(userId))}")
+    return RedirectResponse(f"v2raytun://import/{ await create_link(str(userId))}")
 
 
 
@@ -33,4 +33,4 @@ async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
     """
     if not await successAuth(db, token):
         return {'success': 'Ошибка авторизации'}
-    return {"link": await createLink(str(userId))}
+    return {"link": await create_link(str(userId))}
