@@ -1,0 +1,234 @@
+// This config is based on
+// https://github.com/XTLS/Xray-examples/blob/main/VLESS-TCP-XTLS-Vision-REALITY/REALITY.ENG.md
+{
+  "log": {
+    "access": "none",
+    "error": "",
+    "loglevel": "warning",
+    "dnsLog": false
+  },
+  // Turns on traffic statistics, see https://xtls.github.io/en/config/stats.html#statsobject
+  // and https://xtls.github.io/en/config/policy.html#policyobject
+  // and special "api" tag below
+  "stats": {
+  },
+  "policy": {
+    "levels": {
+      // default level
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  // enables API interface https://xtls.github.io/en/config/api.html#apiobject
+  "api": {
+    "tag": "api",
+    "services": [ "StatsService" ]
+  },
+  // client-side inbound configuration
+  "inbounds": [
+    // gRPC API inbound, used to get statistics
+    {
+      "listen": "127.0.0.1",
+      "port": 8080,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      },
+      "tag": "api"
+    },
+    // socks proxy
+    {
+      "tag": "socks",
+      "port": 800,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      // used to make transparent proxies, see https://xtls.github.io/en/config/inbound.html#sniffingobject
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ],
+        "routeOnly": true
+      },
+      // settings of inbound "protocol" (see above)
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    },
+    // http/https proxy
+    {
+      "tag": "http",
+      "port": 801,
+      "listen": "127.0.0.1",
+      "protocol": "http",
+      // used to make transparent proxies, see https://xtls.github.io/en/config/inbound.html#sniffingobject
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ],
+        "routeOnly": true
+      },
+      // settings of inbound "protocol" (see above)
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  // client-side outbound configuration
+  "outbounds": [
+    // fallback, see `routing` section
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      // VLESS settings
+      "settings": {
+        "vnext": [
+          {
+            // IPv4 or IPv6 address of your xray server, or its domain name
+            "address": "server_address",
+            "port": 443,
+            "users": [
+              {
+                // should match server side
+                "id": "client_id",
+                "email": "client_email",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision-udp443"
+              }
+            ]
+          }
+        ]
+      },
+      // settings of transport protocol, https://xtls.github.io/en/config/transport.html#streamsettingsobject
+      "streamSettings": {
+        "network": "tcp",
+        // transport layer encription, xtls + fallback
+        "security": "reality",
+        "realitySettings": {
+          // tls client hello fingerprint; here client appears as chrome to websites
+          "fingerprint": "firefox",
+          // fake server name which client is attempting to connect in the TLS handshake
+          "serverName": "www.youtube.com",
+          // optional; if true, outputs debug information
+          "show": false,
+          // paired with privateKey from server config
+          "publicKey": "public_key",
+          // user short id
+          "shortId": "short_id"
+        }
+      }
+    },
+    {
+      // this outbound is to guide traffic to local sites not through the server
+      // but directly from the client; `tag` is just an outbound label
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    // for that should be blocked
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ],
+  // Forward each inbound connections to corresponding `outboundTag`. If no rules match,
+  // the traffic is sent out by the first outbound in `outbounds` section.
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      },
+      // uncomment before installation to guide udp traffic to `direct` outbound
+      //{
+      //  "type": "field",
+      //  "network": "udp",
+      //  "outboundTag": "direct"
+      //},
+      // block localhost connections through xray
+      {
+        "type": "field",
+        "ip": [
+          "geoip:private"
+        ],
+        "outboundTag": "block"
+      },
+      // guide bittorent traffic to `direct` outbound
+      {
+        "type": "field",
+        "protocol": [ "bittorrent" ],
+        "outboundTag": "direct"
+      },
+      // traffic to popular ports of torrent trackers
+      // and to popular ports of torrent clients
+      {
+        "type": "field",
+        "port": "6969,6881-6889",
+        "outboundTag": "direct"
+      },
+      // traffic from popular ports of torrent clients
+      {
+        "type": "field",
+        "sourcePort": "6881-6889",
+        "outboundTag": "direct"
+      },
+      // exceptions for some *.ru sites that shouldn't be blocked or accessed directly
+      {
+        "type": "field",
+        "domain": [
+            "ext:customgeo.dat:coherence-extra-exceptions"
+        ],
+        "outboundTag": "proxy"
+      },
+      // guide domestic sites traffic to `direct` outbound
+      {
+        "type": "field",
+        "domain": [
+            "geosite:cn",
+            "domain:cn",
+            // punycode for national Chinese top-level domains .中国, .中國, .公司, .网络
+            "domain:xn--fiqs8s",
+            "domain:xn--fiqz9s",
+            "domain:xn--55qx5d",
+            "domain:xn--io0a7i",
+            "domain:ru",
+            // punycode for cyrillic Russian top-level domain .рф
+            "domain:xn--p1ai",
+            "domain:by",
+            // punycode for national Belorussian top-level domain .бел
+            "domain:xn--90ais",
+            "domain:ir",
+            // extra domains that are used by domestic sites, see https://github.com/EvgenyNerush/coherence-grabber/tree/main
+            "ext:customgeo.dat:coherence-extra",
+            "ext:customgeo.dat:coherence-extra-plus"
+        ],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "ip": [
+            "geoip:cn",
+            "geoip:ru",
+            "geoip:by",
+            "geoip:ir"
+        ],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}

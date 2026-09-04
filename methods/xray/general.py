@@ -1,5 +1,3 @@
-"""Python implementation of easy-xray logic from ex.sh."""
-
 from __future__ import annotations
 
 import json
@@ -7,14 +5,18 @@ import os
 import re
 import shutil
 import subprocess
-import sys
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any, Literal
 
+from methods.xray.config_server import ConfigServer
 
+from configparser import ConfigParser
+
+from pydantic import BaseModel
 class EasyXrayError(Exception):
     """Base error for easy-xray operations."""
 
@@ -22,18 +24,6 @@ class EasyXrayError(Exception):
 class CommandNotFoundError(EasyXrayError):
     """Required external command is missing."""
 
-
-FAKE_SITES = {
-    1: "duckduckgo.com",
-    2: "www.microsoft.com",
-    3: "www.google.com",
-    4: "www.bing.com",
-    5: "www.yahoo.com",
-    6: "www.adobe.com",
-    7: "aws.amazon.com",
-    8: "www.aliexpress.com",
-}
-DEFAULT_FAKE_SITE = FAKE_SITES[1]
 DEFAULT_EMAIL = "love@xray.com"
 XRAY_CONFIG_PATH = Path("/usr/local/etc/xray/config.json")
 XRAY_DAT_DIR = Path("/usr/local/share/xray/")
@@ -50,12 +40,8 @@ class ConfParams:
     address: str
     server_name4cdn: str = ""
     user_id: str | None = None
-    private_key: str | None = None
-    public_key: str | None = None
     short_id: str | None = None
-    fake_site: str = DEFAULT_FAKE_SITE
     service_name: str | None = None
-    email: str = DEFAULT_EMAIL
 
 
 @dataclass
@@ -67,6 +53,18 @@ class StatsResult:
     is_server: bool = False
 
 
+class User(BaseModel):
+    id: str
+    name: str
+
+class ClientReality(BaseModel):
+    short_id: str
+
+class BaseClientConfig(BaseModel):
+    user: User
+    reality: ClientReality
+    
+
 class EasyXray:
     """Administrate xray server configs (logic ported from ex.sh)."""
 
@@ -74,6 +72,10 @@ class EasyXray:
         self.root = Path(root or Path(__file__).resolve().parent)
         self.conf_dir = self.root / "conf"
         self.stats_log = self.root / "stats.log"
+        self.templates_dir = self.root / "templates"
+        config = ConfigParser()
+        config.read("config.ini")
+        self.config = config
 
     # ------------------------------------------------------------------
     # Utility helpers
@@ -249,14 +251,14 @@ class EasyXray:
         ).stdout.strip()
         return re.sub(r"[^0-9A-Za-z]", "", raw)
 
-    @staticmethod
-    def resolve_fake_site(number: int | None = None, custom: str | None = None) -> str:
-        """Map menu choice to a fake site hostname."""
-        if number is None:
-            return DEFAULT_FAKE_SITE
-        if number == 9:
-            return custom or DEFAULT_FAKE_SITE
-        return FAKE_SITES.get(number, DEFAULT_FAKE_SITE)
+    # @staticmethod
+    # def resolve_fake_site(number: int | None = None, custom: str | None = None) -> str:
+    #     """Map menu choice to a fake site hostname."""
+    #     if number is None:
+    #         return DEFAULT_FAKE_SITE
+    #     if number == 9:
+    #         return custom or DEFAULT_FAKE_SITE
+    #     return FAKE_SITES.get(number, DEFAULT_FAKE_SITE)
 
     def _require_conf_tools(self) -> None:
         self.check_command(
@@ -282,8 +284,7 @@ class EasyXray:
     # Config generation
     # ------------------------------------------------------------------
 
-    def conf(self, params: ConfParams) -> dict[str, Path]:
-        """Generate server and client config files."""
+    async def gen_config_server(self, params: ConfParams) -> dict[str, Path]:
         self._require_conf_tools()
         if not params.address:
             raise EasyXrayError("no address given")
@@ -293,13 +294,9 @@ class EasyXray:
             self.check_command("sed", "needed to make nginx's site to use cdn")
 
         user_id = params.user_id or self._xray_uuid()
-        if params.private_key and params.public_key:
-            private_key, public_key = params.private_key, params.public_key
-        else:
-            private_key, public_key = self._xray_x25519()
         short_id = params.short_id or self._openssl_rand_hex(8)
-        fake_site = params.fake_site
-        email = params.email
+        fake_site = self.config["Xray"].get("fake_site")
+        email = DEFAULT_EMAIL
         service_name = params.service_name
 
         self.unsafe_mkdir(self.conf_dir)
@@ -322,7 +319,7 @@ class EasyXray:
         else:
             listen = "0.0.0.0"
 
-        server_config = self.load_jsonc(self.root / "template_config_server.jsonc")
+        server_config = self.load_jsonc(self.templates_dir / "template_config_server.jsonc")
         for inbound_index in (1, 2):
             inbound = server_config["inbounds"][inbound_index]
             inbound["listen"] = listen
@@ -333,66 +330,10 @@ class EasyXray:
                 f"{fake_site}:443" if inbound_index == 1 else f"{fake_site}:80"
             )
             reality["serverNames"] = [fake_site]
-            reality["privateKey"] = private_key
+            reality["privateKey"] = self.config["Xray"].get("private_key")
             reality["shortIds"] = [short_id]
 
-        grpc_inbound = server_config["inbounds"][3]
-        grpc_inbound["settings"]["clients"][0]["id"] = user_id
-        if cdn_mode:
-            grpc_inbound["streamSettings"]["grpcSettings"]["serviceName"] = service_name
-
-        server_path = self.conf_dir / "config_server.json"
-        self._write_json(server_path, server_config)
-
-        client_config = self.load_jsonc(self.root / "template_config_client.jsonc")
-        vnext_entry = {
-            "address": params.address,
-            "port": 443,
-            "users": [
-                {
-                    "id": user_id,
-                    "email": email,
-                    "encryption": "none",
-                    "flow": "xtls-rprx-vision-udp443",
-                }
-            ],
-        }
-        client_reality = {
-            "fingerprint": "firefox",
-            "serverName": fake_site,
-            "show": False,
-            "publicKey": public_key,
-            "shortId": short_id,
-        }
-        for outbound in client_config["outbounds"]:
-            if outbound.get("settings", {}).get("vnext") is not None:
-                outbound["settings"]["vnext"] = [vnext_entry]
-            if outbound.get("streamSettings", {}).get("realitySettings") is not None:
-                outbound["streamSettings"]["realitySettings"] = client_reality
-
-        client_path = self.conf_dir / "config_client.json"
-        self._write_json(client_path, client_config)
-
-        result = {"server": server_path, "client": client_path}
-
-        if cdn_mode:
-            cdn_config = self.load_jsonc(
-                self.root / "template_config_client_cdn.jsonc"
-            )
-            cdn_outbound = cdn_config["outbounds"][0]
-            cdn_outbound["settings"]["vnext"][0]["address"] = params.server_name4cdn
-            cdn_outbound["settings"]["vnext"][0]["users"][0]["id"] = user_id
-            cdn_outbound["streamSettings"]["grpcSettings"]["serviceName"] = (
-                service_name
-            )
-            cdn_path = self.conf_dir / "config_client_cdn.json"
-            self._write_json(cdn_path, cdn_config)
-            result["client_cdn"] = cdn_path
-
-        if not server_path.is_file() or not client_path.is_file():
-            raise EasyXrayError("config files are not generated")
-
-        return result
+        await ConfigServer.write(server_config)
 
     # ------------------------------------------------------------------
     # User management
@@ -424,17 +365,11 @@ class EasyXray:
                 usernames.add(email.split("@", 1)[0])
         return usernames
 
-    def add(
+    async def add(
         self,
-        usernames: Sequence[str],
-        *,
-        resume: bool = False,
-    ) -> list[str]:
-        """Add users or resume suspended users."""
-        self._require_conf_tools()
-        self._server_config_path()
-        self._client_config_path()
-
+        usernames: Sequence[str]
+    ) -> None:
+        
         if not usernames:
             raise EasyXrayError(
                 "usernames not set\n"
@@ -443,135 +378,74 @@ class EasyXray:
                 "preferably of letters and digits only."
             )
 
-        server_path = self.conf_dir / "config_server.json"
-        self.cp_to_backup(server_path)
-        updated: list[str] = []
-
-        server_config = json.loads(server_path.read_text(encoding="utf-8"))
-        existing = self._existing_usernames(server_config)
+        server_config: dict = await ConfigServer.get()
+        existing: set[str] = self._existing_usernames(server_config)
 
         for username in usernames:
             if username in existing:
                 continue
-
-            client_user_path = self.conf_dir / f"config_client_{username}.json"
-            if resume:
-                if not client_user_path.is_file():
-                    raise EasyXrayError(
-                        f"no {client_user_path} found, can't resume"
-                    )
-                client_user = json.loads(client_user_path.read_text(encoding="utf-8"))
-                user_id = client_user["outbounds"][0]["settings"]["vnext"][0][
-                    "users"
-                ][0]["id"]
-                short_id = client_user["outbounds"][0]["streamSettings"][
-                    "realitySettings"
-                ]["shortId"]
-            else:
-                user_id = self._xray_uuid()
-                short_id = self._openssl_rand_hex(8)
-                client_template = json.loads(
-                    self._client_config_path().read_text(encoding="utf-8")
+            user_id: str = self._xray_uuid()
+            short_id: str = self._openssl_rand_hex(8)
+            client_template = await self.get_base_client_config(
+                BaseClientConfig(
+                    user=User(
+                        id=user_id, 
+                        name=username
+                    ), 
+                    reality=ClientReality(short_id=short_id)
                 )
-                outbound = client_template["outbounds"][0]
-                outbound["settings"]["vnext"][0]["users"][0]["id"] = user_id
-                outbound["settings"]["vnext"][0]["users"][0]["email"] = (
-                    f"{username}@example.com"
-                )
-                outbound["streamSettings"]["realitySettings"]["shortId"] = short_id
-                self._write_json(client_user_path, client_template)
-
-                cdn_template_path = self.conf_dir / "config_client_cdn.json"
-                if cdn_template_path.is_file():
-                    cdn_config = json.loads(
-                        cdn_template_path.read_text(encoding="utf-8")
-                    )
-                    cdn_config["outbounds"][0]["settings"]["vnext"][0]["users"][0][
-                        "id"
-                    ] = user_id
-                    cdn_user_path = self.conf_dir / f"config_client_{username}_cdn.json"
-                    self._write_json(cdn_user_path, cdn_config)
-
+            )
+            outbound = client_template["outbounds"][0]
+            outbound["settings"]["vnext"][0]["users"][0]["id"] = user_id
+            outbound["settings"]["vnext"][0]["users"][0]["email"] = (
+                f"{username}@example.com"
+            )
+            outbound["streamSettings"]["realitySettings"]["shortId"] = short_id
             client_entry = {
                 "id": user_id,
                 "email": f"{username}@example.com",
                 "flow": "xtls-rprx-vision",
             }
-            grpc_client_entry = {"id": user_id}
 
-            server_config = json.loads(server_path.read_text(encoding="utf-8"))
             server_config["inbounds"][1]["settings"]["clients"].append(client_entry)
             server_config["inbounds"][1]["streamSettings"]["realitySettings"][
                 "shortIds"
             ].append(short_id)
-            server_config["inbounds"][3]["settings"]["clients"].append(
-                grpc_client_entry
-            )
-            self._write_json(server_path, server_config)
+
+            await ConfigServer.write(server_config)
             existing.add(username)
-            updated.append(username)
 
-        return updated
-
-    def remove_users(
+    async def remove_users(
         self,
         usernames: Sequence[str],
-        *,
-        mode: Literal["del", "suspend"] = "del",
     ) -> list[str]:
-        """Delete or suspend users."""
-        server_path = self.conf_dir / "config_server.json"
-        if not server_path.is_file():
-            raise EasyXrayError("server config not found")
-
         if not usernames:
             raise EasyXrayError("usernames not set")
-
-        self.cp_to_backup(server_path)
         affected: list[str] = []
 
         for username in usernames:
-            client_path = self.conf_dir / f"config_client_{username}.json"
-            if not client_path.is_file():
-                continue
 
-            client_config = json.loads(client_path.read_text(encoding="utf-8"))
-            short_id = client_config["outbounds"][0]["streamSettings"][
-                "realitySettings"
-            ]["shortId"]
-            user_id = client_config["outbounds"][0]["settings"]["vnext"][0]["users"][
-                0
-            ]["id"]
-            email = f"{username}@example.com"
-
-            server_config = json.loads(server_path.read_text(encoding="utf-8"))
+            server_config = await ConfigServer.get()
             clients = server_config["inbounds"][1]["settings"]["clients"]
-            server_config["inbounds"][1]["settings"]["clients"] = [
-                client for client in clients if client.get("email") != email
-            ]
-            short_ids = server_config["inbounds"][1]["streamSettings"][
-                "realitySettings"
-            ]["shortIds"]
-            server_config["inbounds"][1]["streamSettings"]["realitySettings"][
-                "shortIds"
-            ] = [sid for sid in short_ids if sid != short_id]
-            grpc_clients = server_config["inbounds"][3]["settings"]["clients"]
-            server_config["inbounds"][3]["settings"]["clients"] = [
-                client for client in grpc_clients if client.get("id") != user_id
-            ]
-            self._write_json(server_path, server_config)
+            i = 0
+            index_user = 0
+            server_config["inbounds"][1]["settings"]["clients"] = []
+            for client in clients:
+                if client.get("email") != f"{username}@example.com":
+                    server_config["inbounds"][1]["settings"]["clients"].append(client)
+                else:
+                    index_user = i
+                i += 1
 
-            if mode == "del":
-                client_path.unlink(missing_ok=True)
-                cdn_path = self.conf_dir / f"config_client_{username}_cdn.json"
-                cdn_path.unlink(missing_ok=True)
+            del server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index_user]
+
+            await ConfigServer.write(server_config)
 
             affected.append(username)
 
         return affected
 
     def import_users(self, from_dir: str | Path, to_dir: str | Path) -> list[str]:
-        """Import user configs from one directory into another."""
         source = Path(from_dir)
         target = Path(to_dir)
         if not source.is_dir() or not target.is_dir():
@@ -680,7 +554,7 @@ class EasyXray:
         return (
             f"vless://{user_id}@{address}:443"
             f"?security=tls&encryption=none&fp=chrome&type=grpc"
-            f"&serviceName={service_name}#easy-xray+%F0%9F%97%BD+CDN"
+            f"&serviceName={service_name}#{address}-kuzmos.ru"
         )
 
     def write_client_links(self, output_file: str | Path | None = None) -> Path:
@@ -704,24 +578,19 @@ class EasyXray:
         self._chown_if_sudo(output)
         return output
 
-    def push(
+    async def push(
         self,
-        config_name: str = "config_server.json",
-        *,
         require_root: bool = True,
     ) -> None:
-        """Copy config to xray's directory and restart xray."""
         if require_root and os.geteuid() != 0:
             raise EasyXrayError(
                 "you should have root privileges for that, try\nsudo ./ex.sh push"
             )
 
-        source = self.conf_dir / config_name
-        if not source.is_file():
-            raise EasyXrayError(f"config file not found: {source}")
+        server_config = await ConfigServer.get()
+        with open(XRAY_CONFIG_PATH, "w") as config_file:
+            json.dump(server_config, config_file, indent=2, ensure_ascii=False)
 
-        XRAY_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, XRAY_CONFIG_PATH)
         self._run(["systemctl", "restart", "xray"], check=False)
         self._run(
             ["journalctl", "-u", "xray"],
@@ -884,3 +753,31 @@ class EasyXray:
             capture_output=True,
         ).stdout
         self._run(["bash", "-c", install_script, "@", "remove", "--purge"])
+
+    async def get_base_client_config(self, base_client_config: BaseClientConfig) -> dict:
+        client_config = self.load_jsonc(self.templates_dir / "template_config_client.jsonc")
+        vnext_entry = {
+            "address": self.config["Xray"].get("hostName"),
+            "port": 443,
+            "users": [
+                {
+                    "id": base_client_config.user.id,
+                    "email": f"{base_client_config.user.name}@example.com",
+                    "encryption": "none",
+                    "flow": "xtls-rprx-vision-udp443",
+                }
+            ],
+        }
+        client_reality = {
+            "fingerprint": "firefox",
+            "serverName": self.config["Xray"].get("fake_site"),
+            "show": False,
+            "publicKey": self.config["Xray"].get("public_key"),
+            "shortId": base_client_config.reality.short_id,
+        }
+        for outbound in client_config["outbounds"]:
+            if outbound.get("settings", {}).get("vnext") is not None:
+                outbound["settings"]["vnext"] = [vnext_entry]
+            if outbound.get("streamSettings", {}).get("realitySettings") is not None:
+                outbound["streamSettings"]["realitySettings"] = client_reality
+        return client_config

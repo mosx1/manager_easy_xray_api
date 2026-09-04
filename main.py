@@ -1,16 +1,32 @@
+import asyncio
 import uvicorn
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from db.db import engine
+from db.db import databaseReconnectLoop, engine
 from deps.auth import AuthenticationError
 from sqlmodel import SQLModel
 
 from routers import router
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    stopEvent = asyncio.Event()
+    reconnectTask = asyncio.create_task(databaseReconnectLoop(stopEvent))
+    yield
+    stopEvent.set()
+    reconnectTask.cancel()
+    try:
+        await reconnectTask
+    except asyncio.CancelledError:
+        pass
+    await engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(AuthenticationError)
@@ -38,5 +54,6 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8081,
-        reload=False
+        reload=False,
+        workers=2
     )
