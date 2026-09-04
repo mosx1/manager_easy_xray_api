@@ -16,7 +16,7 @@ async def add_user(user_id: int) -> str:
     except subprocess.CalledProcessError as e:
         return e.output
 
-    return await createLink(user_id)
+    return await create_link(user_id)
 
 
 
@@ -288,7 +288,7 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
     }
 
 
-async def createLink(userId: str):
+async def create_link(userId: str):
     """
         Создает ссылку для пользователя по конфигурации
     """
@@ -297,7 +297,7 @@ async def createLink(userId: str):
     config.read("config.ini")
 
     with open("/root/easy-xray-main/conf/config_client_{}.json".format(userId)) as file:
-
+        return file.read()
         jsonData = json.load(file)
 
         id = jsonData["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
