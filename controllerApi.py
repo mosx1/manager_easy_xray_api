@@ -124,6 +124,10 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "tag": "fragment",
                 "protocol": "freedom",
             },
+            {
+                "tag": "direct",
+                "protocol": "freedom"
+            }
         ],
         "api": {
             "tag": "api",
@@ -197,6 +201,36 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
             "balancers": [],
             "domainStrategy": "AsIs",
             "rules": [
+                {
+                    "type": "field",
+                        "domain": [
+                        "geosite:cn",
+                        "domain:cn",
+                        "domain:xn--fiqs8s",
+                        "domain:xn--fiqz9s",
+                        "domain:xn--55qx5d",
+                        "domain:xn--io0a7i",
+                        "domain:ru",
+                        "domain:xn--p1ai",
+                        "domain:by",
+                        "domain:xn--90ais",
+                        "domain:ir",
+                        "ext:customgeo.dat:coherence-extra",
+                        "ext:customgeo.dat:coherence-extra-plus",
+                        "geosite:apple"
+                    ],
+                    "outboundTag": "direct"
+                },
+                {
+                    "type": "field",
+                    "ip": [
+                        "geoip:cn",
+                        "geoip:ru",
+                        "geoip:by",
+                        "geoip:ir"
+                    ],
+                    "outboundTag": "direct"
+                },
                 {
                     "type": "field",
                     "outboundTag": "direct",
@@ -297,7 +331,7 @@ async def create_link(userId: str):
     config.read("config.ini")
 
     with open("/root/easy-xray-main/conf/config_client_{}.json".format(userId)) as file:
-        return file.read()
+
         jsonData = json.load(file)
 
         id = jsonData["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
