@@ -215,8 +215,6 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                         "domain:by",
                         "domain:xn--90ais",
                         "domain:ir",
-                        "ext:customgeo.dat:coherence-extra",
-                        "ext:customgeo.dat:coherence-extra-plus",
                         "geosite:apple"
                     ],
                     "outboundTag": "direct"
