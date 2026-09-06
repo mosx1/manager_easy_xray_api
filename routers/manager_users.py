@@ -18,7 +18,7 @@ router.include_router(query_auth_router)
 @query_auth_router.get("/add")
 async def _(user_id: int) -> dict:
     easy_xray = EasyXray()
-    easy_xray.add([str(user_id)])
+    await easy_xray.add([str(user_id)])
     link = await add_user(user_id)
 
     if link:

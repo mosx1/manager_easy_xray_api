@@ -61,6 +61,5 @@ async def get_id_server_by_hostname(host_name: str | None = None) -> int | None:
 
 
 async def backup_config_server():
-    server_id = await get_id_server_by_hostname()
     with open("/usr/local/etc/xray/config.json", "r") as config_file:
-        await ConfigServer.write(server_id, config_file.read())
+        await ConfigServer.write(config_file.read())

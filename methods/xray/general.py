@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any
 
 from methods.xray.config_server import ConfigServer
 
@@ -284,7 +284,7 @@ class EasyXray:
     # Config generation
     # ------------------------------------------------------------------
 
-    async def gen_config_server(self, params: ConfParams) -> dict[str, Path]:
+    async def gen_config_server(self, params: ConfParams) -> None:
         self._require_conf_tools()
         if not params.address:
             raise EasyXrayError("no address given")
@@ -386,28 +386,14 @@ class EasyXray:
                 continue
             user_id: str = self._xray_uuid()
             short_id: str = self._openssl_rand_hex(8)
-            client_template = await self.get_base_client_config(
-                BaseClientConfig(
-                    user=User(
-                        id=user_id, 
-                        name=username
-                    ), 
-                    reality=ClientReality(short_id=short_id)
-                )
-            )
-            outbound = client_template["outbounds"][0]
-            outbound["settings"]["vnext"][0]["users"][0]["id"] = user_id
-            outbound["settings"]["vnext"][0]["users"][0]["email"] = (
-                f"{username}@example.com"
-            )
-            outbound["streamSettings"]["realitySettings"]["shortId"] = short_id
-            client_entry = {
-                "id": user_id,
-                "email": f"{username}@example.com",
-                "flow": "xtls-rprx-vision",
-            }
 
-            server_config["inbounds"][1]["settings"]["clients"].append(client_entry)
+            server_config["inbounds"][1]["settings"]["clients"].append(
+                {
+                    "id": user_id,
+                    "email": f"{username}@example.com",
+                    "flow": "xtls-rprx-vision",
+                }
+            )
             server_config["inbounds"][1]["streamSettings"]["realitySettings"][
                 "shortIds"
             ].append(short_id)
@@ -418,32 +404,21 @@ class EasyXray:
     async def remove_users(
         self,
         usernames: Sequence[str],
-    ) -> list[str]:
+    ) -> None:
         if not usernames:
             raise EasyXrayError("usernames not set")
-        affected: list[str] = []
 
         for username in usernames:
 
             server_config = await ConfigServer.get()
             clients = server_config["inbounds"][1]["settings"]["clients"]
-            i = 0
-            index_user = 0
             server_config["inbounds"][1]["settings"]["clients"] = []
-            for client in clients:
+            for index,client in enumerate(clients):
                 if client.get("email") != f"{username}@example.com":
                     server_config["inbounds"][1]["settings"]["clients"].append(client)
-                else:
-                    index_user = i
-                i += 1
-
-            del server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index_user]
-
+                    del server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]  
             await ConfigServer.write(server_config)
 
-            affected.append(username)
-
-        return affected
 
     def import_users(self, from_dir: str | Path, to_dir: str | Path) -> list[str]:
         source = Path(from_dir)
@@ -754,30 +729,30 @@ class EasyXray:
         ).stdout
         self._run(["bash", "-c", install_script, "@", "remove", "--purge"])
 
-    async def get_base_client_config(self, base_client_config: BaseClientConfig) -> dict:
-        client_config = self.load_jsonc(self.templates_dir / "template_config_client.jsonc")
-        vnext_entry = {
-            "address": self.config["Xray"].get("hostName"),
-            "port": 443,
-            "users": [
-                {
-                    "id": base_client_config.user.id,
-                    "email": f"{base_client_config.user.name}@example.com",
-                    "encryption": "none",
-                    "flow": "xtls-rprx-vision-udp443",
-                }
-            ],
-        }
-        client_reality = {
-            "fingerprint": "firefox",
-            "serverName": self.config["Xray"].get("fake_site"),
-            "show": False,
-            "publicKey": self.config["Xray"].get("public_key"),
-            "shortId": base_client_config.reality.short_id,
-        }
-        for outbound in client_config["outbounds"]:
-            if outbound.get("settings", {}).get("vnext") is not None:
-                outbound["settings"]["vnext"] = [vnext_entry]
-            if outbound.get("streamSettings", {}).get("realitySettings") is not None:
-                outbound["streamSettings"]["realitySettings"] = client_reality
-        return client_config
+    # async def get_base_client_config(self, base_client_config: BaseClientConfig) -> dict:
+    #     client_config = self.load_jsonc(self.templates_dir / "template_config_client.jsonc")
+    #     vnext_entry = {
+    #         "address": self.config["Xray"].get("hostName"),
+    #         "port": 443,
+    #         "users": [
+    #             {
+    #                 "id": base_client_config.user.id,
+    #                 "email": f"{base_client_config.user.name}@example.com",
+    #                 "encryption": "none",
+    #                 "flow": "xtls-rprx-vision-udp443",
+    #             }
+    #         ],
+    #     }
+    #     client_reality = {
+    #         "fingerprint": "firefox",
+    #         "serverName": self.config["Xray"].get("fake_site"),
+    #         "show": False,
+    #         "publicKey": self.config["Xray"].get("public_key"),
+    #         "shortId": base_client_config.reality.short_id,
+    #     }
+    #     for outbound in client_config["outbounds"]:
+    #         if outbound.get("settings", {}).get("vnext") is not None:
+    #             outbound["settings"]["vnext"] = [vnext_entry]
+    #         if outbound.get("streamSettings", {}).get("realitySettings") is not None:
+    #             outbound["streamSettings"]["realitySettings"] = client_reality
+    #     return client_config

@@ -1,5 +1,8 @@
 import subprocess, json, os
+
 from configparser import ConfigParser
+
+from methods.xray.config_server import ConfigServer
 
 
 async def add_user(user_id: int) -> str:
@@ -20,7 +23,7 @@ async def add_user(user_id: int) -> str:
 
 
 
-def _client_link_config(user_id, port, public_key, server_name, short_id, host_name):
+def _client_link_config(user_id, public_key, server_name, short_id, host_name):
     return {
         "log": {},
         "remarks": f"Выгодный ВПН - {host_name}",
@@ -86,7 +89,7 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "settings": {
                     "vnext": [
                         {
-                            "port": port,
+                            "port": 443,
                             "users": [
                                 {
                                     "encryption": "none",
@@ -124,10 +127,6 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "tag": "fragment",
                 "protocol": "freedom",
             },
-            {
-                "tag": "direct",
-                "protocol": "freedom"
-            }
         ],
         "api": {
             "tag": "api",
@@ -201,34 +200,6 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
             "balancers": [],
             "domainStrategy": "AsIs",
             "rules": [
-                {
-                    "type": "field",
-                        "domain": [
-                        "geosite:cn",
-                        "domain:cn",
-                        "domain:xn--fiqs8s",
-                        "domain:xn--fiqz9s",
-                        "domain:xn--55qx5d",
-                        "domain:xn--io0a7i",
-                        "domain:ru",
-                        "domain:xn--p1ai",
-                        "domain:by",
-                        "domain:xn--90ais",
-                        "domain:ir",
-                        "geosite:apple"
-                    ],
-                    "outboundTag": "direct"
-                },
-                {
-                    "type": "field",
-                    "ip": [
-                        "geoip:cn",
-                        "geoip:ru",
-                        "geoip:by",
-                        "geoip:ir"
-                    ],
-                    "outboundTag": "direct"
-                },
                 {
                     "type": "field",
                     "outboundTag": "direct",
@@ -324,30 +295,26 @@ async def create_link(userId: str):
     """
         Создает ссылку для пользователя по конфигурации
     """
-
+    id = None
+    short_id = None
     config = ConfigParser()
     config.read("config.ini")
-
-    with open("/root/easy-xray-main/conf/config_client_{}.json".format(userId)) as file:
-        return file.read()
-        jsonData = json.load(file)
-
-        id = jsonData["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
-        port = jsonData["outbounds"][0]["settings"]["vnext"][0]["port"]
-        public_key = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["publicKey"]
-        server_name = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["serverName"]
-        short_id = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["shortId"]
-        host_name = config['Xray']['hostName']
-        link_config = _client_link_config(
-            id,
-            port,
-            public_key,
-            server_name,
-            short_id,
-            host_name,
-        )
-        link = json.dumps(link_config, ensure_ascii=False)
-        return link
+    server_config = await ConfigServer.get()
+    clients = server_config["inbounds"][1]["settings"]["clients"]
+    for index, client in enumerate(clients):
+        if client["email"] == f"{userId}@example.com":
+            id = client["id"]
+            short_id = server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]
+            break
+    link_config = _client_link_config(
+        id,
+        config["Xray"]["public_key"],
+        config["Xray"]["fake_site"],
+        short_id,
+        config["Xray"]["hostName"],
+    )
+    link = json.dumps(link_config, ensure_ascii=False)
+    return link
     
 
 
