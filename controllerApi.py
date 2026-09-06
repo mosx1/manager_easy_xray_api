@@ -124,6 +124,10 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "tag": "fragment",
                 "protocol": "freedom",
             },
+            {
+                "tag": "direct",
+                "protocol": "freedom"
+            }
         ],
         "api": {
             "tag": "api",
@@ -197,6 +201,34 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
             "balancers": [],
             "domainStrategy": "AsIs",
             "rules": [
+                {
+                    "type": "field",
+                        "domain": [
+                        "geosite:cn",
+                        "domain:cn",
+                        "domain:xn--fiqs8s",
+                        "domain:xn--fiqz9s",
+                        "domain:xn--55qx5d",
+                        "domain:xn--io0a7i",
+                        "domain:ru",
+                        "domain:xn--p1ai",
+                        "domain:by",
+                        "domain:xn--90ais",
+                        "domain:ir",
+                        "geosite:apple"
+                    ],
+                    "outboundTag": "direct"
+                },
+                {
+                    "type": "field",
+                    "ip": [
+                        "geoip:cn",
+                        "geoip:ru",
+                        "geoip:by",
+                        "geoip:ir"
+                    ],
+                    "outboundTag": "direct"
+                },
                 {
                     "type": "field",
                     "outboundTag": "direct",
