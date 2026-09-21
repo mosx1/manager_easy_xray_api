@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Sequence
 
 from fastapi import APIRouter, Depends
 
@@ -18,8 +18,7 @@ router.include_router(query_auth_router)
 @query_auth_router.get("/add")
 async def _(user_id: int) -> dict:
     easy_xray = EasyXray()
-    await easy_xray.add([str(user_id)])
-    link = await add_user(user_id)
+    link = await easy_xray.add([str(user_id)])
 
     if link:
         return {"success": True, "link": link}
@@ -46,7 +45,7 @@ async def _(
 async def _(
     data: Annotated[DelUsers, Depends(authenticated_body(DelUsers))],
 ):
-    if await del_users(data.user_ids):
+    if await EasyXray.remove_users(data.user_ids):
         return {"success": True}
     return {"success": False}
 
