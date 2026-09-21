@@ -367,7 +367,7 @@ class EasyXray:
     async def add(
         self,
         usernames: Sequence[str]
-    ) -> str:
+    ) -> list[str]:
         
         if not usernames:
             raise EasyXrayError(
@@ -381,7 +381,7 @@ class EasyXray:
         config = ConfigParser()
         config.read("config.ini")
         existing: set[str] = self._existing_usernames(server_config)
-
+        links: list[str] = []
         for username in usernames:
             if username in existing:
                 continue
@@ -401,12 +401,13 @@ class EasyXray:
 
             await ConfigServer.write(server_config)
             existing.add(username)
-        return (
-            f"vless://{user_id}@{config['Xray']['hostName']}:443"
-            f"?fragment=&security=reality&encryption=none&pbk={config['Xray']['public_key']}"
-            f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
-            f"&sni={config['Xray']['fake_site']}&sid={short_id}#{config['Xray']['hostName']}|kuzmos.ru"
-        )
+            links.append(
+                f"vless://{user_id}@{config['Xray']['hostName']}:443"
+                f"?fragment=&security=reality&encryption=none&pbk={config['Xray']['public_key']}"
+                f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
+                f"&sni={config['Xray']['fake_site']}&sid={short_id}#{config['Xray']['hostName']}|kuzmos.ru"
+            )
+        return links
 
     async def remove_users(
         self,
