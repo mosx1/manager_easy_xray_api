@@ -1,8 +1,8 @@
-from typing import Annotated, Sequence
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from controllerApi import add_user, resumeUser, del_users, suspend_users
+from controllerApi import resumeUser, suspend_users
 from deps.auth import authenticated_body, require_query_auth
 from entities.manager_users import DelUsers, SuspendUsers
 from entities.statistic import RequestStatustic
@@ -45,9 +45,9 @@ async def _(
 async def _(
     data: Annotated[DelUsers, Depends(authenticated_body(DelUsers))],
 ):
-    if await EasyXray.remove_users(data.user_ids):
-        return {"success": True}
-    return {"success": False}
+    easy_xray = EasyXray()
+    await easy_xray.remove_users([str(user_id) for user_id in data.user_ids])
+    return {"success": True}
 
 
 @router.post("/statistic")
