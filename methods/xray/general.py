@@ -285,7 +285,7 @@ class EasyXray:
     # ------------------------------------------------------------------
 
     async def gen_config_server(self, params: ConfParams | None = None) -> None:
-        self._require_conf_tools()
+        # self._require_conf_tools()
         # if not params.address:
         #     raise EasyXrayError("no address given")
 
