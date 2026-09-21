@@ -356,12 +356,17 @@ class EasyXray:
             )
         return path
 
-    def _existing_usernames(self, server_config: dict[str, Any]) -> set[str]:
-        usernames: set[str] = set()
-        for client in server_config["inbounds"][1]["settings"]["clients"]:
+    async def _existing_usernames(self, server_config: dict[str, Any]) -> dict[str, ConfParams]:
+        usernames = {}
+        for index, client in enumerate(server_config["inbounds"][1]["settings"]["clients"]):
             email = client.get("email", "")
             if "@" in email:
-                usernames.add(email.split("@", 1)[0])
+                usernames[email.split("@", 1)[0]] = ConfParams(
+                    address=server_config["inbounds"][1]["listen"],
+                    user_id=client.get("id", ""),
+                    short_id=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index],
+                    service_name=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["serviceName"],
+                )
         return usernames
 
     async def add(
@@ -380,11 +385,14 @@ class EasyXray:
         server_config: dict = await ConfigServer.get()
         config = ConfigParser()
         config.read("config.ini")
-        existing: set[str] = self._existing_usernames(server_config)
+        existing: dict[str, ConfParams] = await self._existing_usernames(server_config)
         links: list[str] = []
         update = False
         for username in usernames:
-            if username not in existing:
+            if existing.get(username):
+                user_id = existing[username].user_id
+                short_id = existing[username].short_id
+            else:
                 update = True
                 user_id: str = self._xray_uuid()
                 short_id: str = self._openssl_rand_hex(8)
@@ -399,7 +407,12 @@ class EasyXray:
                 server_config["inbounds"][1]["streamSettings"]["realitySettings"][
                     "shortIds"
                 ].append(short_id)
-            existing.add(username)
+            existing[username] = ConfParams(
+                address=server_config["inbounds"][1]["listen"],
+                user_id=user_id,
+                short_id=short_id,
+                service_name=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["serviceName"],
+            )
             links.append(
                 f"vless://{user_id}@{config['Xray']['hostName']}:443"
                 f"?fragment=&security=reality&encryption=none&pbk={config['Xray']['public_key']}"
