@@ -596,8 +596,6 @@ class EasyXray:
 
         type(self)._xray_process = subprocess.Popen(
             ["xray", "run", "-config", str(XRAY_CONFIG_PATH)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
             text=True,
         )
 
@@ -700,7 +698,15 @@ class EasyXray:
                 "you should have root privileges to install xray, try"
             )
         await self.gen_config_server()
+
+        XRAY_DAT_DIR.mkdir(parents=True, exist_ok=True)
+        customgeo = self.root / "customgeo.dat"
+        if not customgeo.is_file():
+            raise EasyXrayError(f"customgeo.dat not copied to {XRAY_DAT_DIR}")
+        shutil.copy2(customgeo, XRAY_DAT_DIR / customgeo.name)
+
         if shutil.which("xray") and not force_reinstall:
+            await self.push()
             return
 
         self.check_command(
@@ -712,12 +718,6 @@ class EasyXray:
             capture_output=True,
         ).stdout
         self._run(["bash", "-c", install_script, "@", "install"])
-
-        XRAY_DAT_DIR.mkdir(parents=True, exist_ok=True)
-        customgeo = self.root / "customgeo.dat"
-        if not customgeo.is_file():
-            raise EasyXrayError(f"customgeo.dat not copied to {XRAY_DAT_DIR}")
-        shutil.copy2(customgeo, XRAY_DAT_DIR / customgeo.name)
 
         if setup_cdn:
             cert_pem = self.root / "cert.pem"
@@ -734,6 +734,8 @@ class EasyXray:
             shutil.copy2(cert_key, Path("/etc/ssl/private/cert.key"))
             shutil.copy2(nginx_conf, Path("/etc/nginx/nginx.conf"))
             self._run(["systemctl", "enable", "nginx"], check=False)
+
+        await self.push()
 
     def upgrade_xray(self) -> None:
         """Upgrade xray without touching configs."""
