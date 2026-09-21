@@ -12,8 +12,7 @@ class ConfigServer:
 
     @classmethod
     async def write(cls, text: dict | str):
-        if isinstance(text, dict):
-            text = json.dumps(text)
+        config_data = json.loads(text) if isinstance(text, str) else text
         server_id = await get_id_server_by_hostname()
         async with async_session() as session:
             configs = await session.execute(
@@ -24,13 +23,13 @@ class ConfigServer:
                 await session.execute(
                     update(Configs_Servers)
                     .where(Configs_Servers.server_id == server_id)
-                    .values(config=text)
+                    .values(config=config_data)
                 )
             else:
                 await session.execute(
                     insert(Configs_Servers).values(
                         server_id=server_id,
-                        config=text,
+                        config=config_data,
                     )
                 )
             await session.commit()
@@ -43,7 +42,13 @@ class ConfigServer:
                 select(Configs_Servers).where(Configs_Servers.server_id == server_id)
             )
             configs = configs.scalar()
-            return json.loads(configs.config)
+            if configs is None:
+                raise RuntimeError(
+                    "Конфигурация Xray не найдена. Сначала вызовите /install_xray"
+                )
+            if isinstance(configs.config, str):
+                return json.loads(configs.config)
+            return configs.config
 
 
 async def get_id_server_by_hostname(host_name: str | None = None) -> int | None:
