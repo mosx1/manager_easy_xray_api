@@ -19,7 +19,7 @@ async def add_user(user_id: int) -> str:
     except subprocess.CalledProcessError as e:
         return e.output
 
-    return await create_link(user_id)
+    return await create_link(str(user_id))
 
 
 
