@@ -243,13 +243,13 @@ class EasyXray:
         )
         return result.stdout.strip()
 
-    def _autogenerate_service_name(self) -> str:
-        self.check_command("openssl")
-        raw = self._run(
-            ["openssl", "rand", "-base64", "9"],
-            capture_output=True,
-        ).stdout.strip()
-        return re.sub(r"[^0-9A-Za-z]", "", raw)
+    # def _autogenerate_service_name(self) -> str:
+    #     self.check_command("openssl")
+    #     raw = self._run(
+    #         ["openssl", "rand", "-base64", "9"],
+    #         capture_output=True,
+    #     ).stdout.strip()
+    #     return re.sub(r"[^0-9A-Za-z]", "", raw)
 
     # @staticmethod
     # def resolve_fake_site(number: int | None = None, custom: str | None = None) -> str:
@@ -259,18 +259,6 @@ class EasyXray:
     #     if number == 9:
     #         return custom or DEFAULT_FAKE_SITE
     #     return FAKE_SITES.get(number, DEFAULT_FAKE_SITE)
-
-    def _require_conf_tools(self) -> None:
-        self.check_command(
-            "xray",
-            "needed for config generation",
-            "to install xray, try: sudo ./ex.sh install",
-        )
-        self.check_command("jq", "needed for operations with configs")
-        self.check_command(
-            "openssl",
-            "needed for strong random numbers excluding some types of attacks",
-        )
 
     def _write_json(self, path: Path, data: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -285,7 +273,6 @@ class EasyXray:
     # ------------------------------------------------------------------
 
     async def gen_config_server(self, params: ConfParams | None = None) -> None:
-        # self._require_conf_tools()
         # if not params.address:
         #     raise EasyXrayError("no address given")
 
@@ -419,6 +406,7 @@ class EasyXray:
             )
         if update:
             await ConfigServer.write(server_config)
+            await self.push()
         return links
 
     async def remove_users(
@@ -438,6 +426,7 @@ class EasyXray:
                     server_config["inbounds"][1]["settings"]["clients"].append(client)
                     del server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]  
             await ConfigServer.write(server_config)
+            await self.push()
 
 
     def import_users(self, from_dir: str | Path, to_dir: str | Path) -> list[str]:
@@ -579,7 +568,7 @@ class EasyXray:
     ) -> None:
         if require_root and os.geteuid() != 0:
             raise EasyXrayError(
-                "you should have root privileges for that, try\nsudo ./ex.sh push"
+                "you should have root privileges for that, try"
             )
 
         server_config = await ConfigServer.get()
@@ -587,11 +576,6 @@ class EasyXray:
             json.dump(server_config, config_file, indent=2, ensure_ascii=False)
 
         self._run(["systemctl", "restart", "xray"], check=False)
-        self._run(
-            ["journalctl", "-u", "xray"],
-            capture_output=True,
-            check=False,
-        )
 
     def _xray_api_stats(self, name: str) -> str:
         result = self._run(

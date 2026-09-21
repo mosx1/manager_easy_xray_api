@@ -5,24 +5,6 @@ from configparser import ConfigParser
 from methods.xray.config_server import ConfigServer
 
 
-async def add_user(user_id: int) -> str:
-    """
-        Создает пользоавтеля в xray
-    """
-    try:
-        subprocess.check_output(
-            (
-                "/root/easy-xray-main/ex.sh add {}".format(user_id)
-            ), 
-            shell=True
-        )
-    except subprocess.CalledProcessError as e:
-        return e.output
-
-    return await create_link(str(user_id))
-
-
-
 def _client_link_config(user_id, public_key, server_name, short_id, host_name):
     return {
         "log": {},
@@ -371,25 +353,6 @@ async def suspend_users(user_ids: set[int]) -> bool:
         return False
 
 
-async def del_users(user_ids: set[int]) -> bool:
-    """
-        Удаляет пользователей с сервера
-    """
-    try:
-
-        users: str = ' '.join([str(user_id) for user_id in user_ids])
-
-        subprocess.check_output(
-            (f"/root/easy-xray-main/ex.sh del {users}"),
-            shell=True
-        )
-        return True
-    except subprocess.CalledProcessError as e:
-        return False
-    
-
-
-
 async def getStatistic():
     """
         Получает статистику по пользователям
@@ -414,19 +377,3 @@ async def getStatistic():
                     dictRes[arrResult[0]][tempArrResult[0]] = arrResult[1][:-2]
 
         return dictRes
-    
-
-
-async def checkExistsUser(userId: str) -> bool:
-    """
-        Проверяет существует ли пользователь в файле конфигурации сервера
-    """
-    email = "{}@example.com".format(userId)
-
-    with open('/usr/local/etc/xray/config.json', 'r') as configFile:
-        configData = json.loads(configFile.read())
-        clients = configData['inbounds'][1]['settings']['clients']
-        for client in clients:
-            if client['email'] == email:
-                return True
-    return False
