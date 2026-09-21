@@ -284,40 +284,39 @@ class EasyXray:
     # Config generation
     # ------------------------------------------------------------------
 
-    async def gen_config_server(self, params: ConfParams) -> None:
+    async def gen_config_server(self, params: ConfParams | None = None) -> None:
         self._require_conf_tools()
-        if not params.address:
-            raise EasyXrayError("no address given")
+        # if not params.address:
+        #     raise EasyXrayError("no address given")
 
-        cdn_mode = bool(params.server_name4cdn)
-        if cdn_mode:
-            self.check_command("sed", "needed to make nginx's site to use cdn")
+        # cdn_mode = bool(params.server_name4cdn)
+        # if cdn_mode:
+        #     self.check_command("sed", "needed to make nginx's site to use cdn")
 
-        user_id = params.user_id or self._xray_uuid()
-        short_id = params.short_id or self._openssl_rand_hex(8)
+        user_id = self._xray_uuid()
+        short_id = self._openssl_rand_hex(8)
         fake_site = self.config["Xray"].get("fake_site")
         email = DEFAULT_EMAIL
-        service_name = params.service_name
 
         self.unsafe_mkdir(self.conf_dir)
 
-        if cdn_mode:
-            listen = params.address
-            service_name = service_name or self._autogenerate_service_name()
-            template_site = self.root / "template_site4cdn.conf"
-            site_content = template_site.read_text(encoding="utf-8")
-            site_content = site_content.replace(
-                "server_domain_name", params.server_name4cdn
-            )
-            site_content = site_content.replace("duckduckgo.com", fake_site)
-            site_content = site_content.replace("your_service_name", service_name)
-            site_path = self.conf_dir / "site4cdn.conf"
-            site_path.write_text(site_content, encoding="utf-8")
-            self._chown_if_sudo(site_path)
-            NGINX_SITES_ENABLED.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(site_path, NGINX_SITES_ENABLED / site_path.name)
-        else:
-            listen = "0.0.0.0"
+        # if cdn_mode:
+        #     listen = params.address
+        #     service_name = service_name or self._autogenerate_service_name()
+        #     template_site = self.root / "template_site4cdn.conf"
+        #     site_content = template_site.read_text(encoding="utf-8")
+        #     site_content = site_content.replace(
+        #         "server_domain_name", params.server_name4cdn
+        #     )
+        #     site_content = site_content.replace("duckduckgo.com", fake_site)
+        #     site_content = site_content.replace("your_service_name", service_name)
+        #     site_path = self.conf_dir / "site4cdn.conf"
+        #     site_path.write_text(site_content, encoding="utf-8")
+        #     self._chown_if_sudo(site_path)
+        #     NGINX_SITES_ENABLED.mkdir(parents=True, exist_ok=True)
+        #     shutil.copy2(site_path, NGINX_SITES_ENABLED / site_path.name)
+        # else:
+        listen = "0.0.0.0"
 
         server_config = self.load_jsonc(self.templates_dir / "template_config_server.jsonc")
         for inbound_index in (1, 2):
@@ -660,7 +659,7 @@ class EasyXray:
 
         return result
 
-    def install_xray(
+    async def install_xray(
         self,
         *,
         setup_cdn: bool = False,
@@ -671,7 +670,7 @@ class EasyXray:
             raise EasyXrayError(
                 "you should have root privileges to install xray, try"
             )
-
+        await self.gen_config_server()
         if shutil.which("xray") and not force_reinstall:
             return
 
