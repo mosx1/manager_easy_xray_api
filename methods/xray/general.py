@@ -673,7 +673,7 @@ class EasyXray:
             )
 
         if shutil.which("xray") and not force_reinstall:
-            raise EasyXrayError("xray detected; set force_reinstall=True to continue")
+            return
 
         self.check_command(
             "curl",
