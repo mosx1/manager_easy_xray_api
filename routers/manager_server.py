@@ -17,5 +17,5 @@ async def _():
 @router.get("/install_xray")
 async def install_xray():
     easy_xray = EasyXray()
-    easy_xray.install_xray()
+    await easy_xray.install_xray()
     return JSONResponse({"success": True})
