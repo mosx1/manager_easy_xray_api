@@ -364,8 +364,7 @@ class EasyXray:
                 usernames[email.split("@", 1)[0]] = ConfParams(
                     address=server_config["inbounds"][1]["listen"],
                     user_id=client.get("id", ""),
-                    short_id=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index],
-                    service_name=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["serviceName"],
+                    short_id=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]
                 )
         return usernames
 
