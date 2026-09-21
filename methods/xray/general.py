@@ -69,7 +69,7 @@ class EasyXray:
     """Administrate xray server configs (logic ported from ex.sh)."""
 
     def __init__(self, root: str | Path | None = None) -> None:
-        self.root = Path(root or Path(__file__).resolve().parent)
+        self.root = Path(root or Path(__file__).resolve().parents[2])
         self.conf_dir = self.root / "conf"
         self.stats_log = self.root / "stats.log"
         self.templates_dir = self.root / "templates"
