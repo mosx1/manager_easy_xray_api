@@ -409,8 +409,7 @@ class EasyXray:
             existing[username] = ConfParams(
                 address=server_config["inbounds"][1]["listen"],
                 user_id=user_id,
-                short_id=short_id,
-                service_name=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["serviceName"],
+                short_id=short_id
             )
             links.append(
                 f"vless://{user_id}@{config['Xray']['hostName']}:443"
