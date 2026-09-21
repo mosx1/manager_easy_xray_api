@@ -382,24 +382,23 @@ class EasyXray:
         config.read("config.ini")
         existing: set[str] = self._existing_usernames(server_config)
         links: list[str] = []
+        update = False
         for username in usernames:
-            if username in existing:
-                continue
-            user_id: str = self._xray_uuid()
-            short_id: str = self._openssl_rand_hex(8)
+            if username not in existing:
+                update = True
+                user_id: str = self._xray_uuid()
+                short_id: str = self._openssl_rand_hex(8)
 
-            server_config["inbounds"][1]["settings"]["clients"].append(
-                {
-                    "id": user_id,
-                    "email": f"{username}@example.com",
-                    "flow": "xtls-rprx-vision",
-                }
-            )
-            server_config["inbounds"][1]["streamSettings"]["realitySettings"][
-                "shortIds"
-            ].append(short_id)
-
-            await ConfigServer.write(server_config)
+                server_config["inbounds"][1]["settings"]["clients"].append(
+                    {
+                        "id": user_id,
+                        "email": f"{username}@example.com",
+                        "flow": "xtls-rprx-vision",
+                    }
+                )
+                server_config["inbounds"][1]["streamSettings"]["realitySettings"][
+                    "shortIds"
+                ].append(short_id)
             existing.add(username)
             links.append(
                 f"vless://{user_id}@{config['Xray']['hostName']}:443"
@@ -407,6 +406,8 @@ class EasyXray:
                 f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
                 f"&sni={config['Xray']['fake_site']}&sid={short_id}#{config['Xray']['hostName']}|kuzmos.ru"
             )
+        if update:
+            await ConfigServer.write(server_config)
         return links
 
     async def remove_users(
