@@ -5,7 +5,12 @@ WORKDIR /fastapiapp
 ARG TARGETARCH
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates unzip \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        jq \
+        openssl \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

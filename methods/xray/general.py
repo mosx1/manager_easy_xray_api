@@ -68,6 +68,8 @@ class BaseClientConfig(BaseModel):
 class EasyXray:
     """Administrate xray server configs (logic ported from ex.sh)."""
 
+    _xray_process: subprocess.Popen[str] | None = None
+
     def __init__(self, root: str | Path | None = None) -> None:
         self.root = Path(root or Path(__file__).resolve().parents[2])
         self.conf_dir = self.root / "conf"
@@ -575,7 +577,29 @@ class EasyXray:
         with open(XRAY_CONFIG_PATH, "w") as config_file:
             json.dump(server_config, config_file, indent=2, ensure_ascii=False)
 
-        self._run(["systemctl", "restart", "xray"], check=False)
+        if shutil.which("systemctl"):
+            self._run(["systemctl", "restart", "xray"], check=False)
+            return
+
+        self._run(
+            ["xray", "run", "-test", "-config", str(XRAY_CONFIG_PATH)],
+        )
+
+        process = type(self)._xray_process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+        type(self)._xray_process = subprocess.Popen(
+            ["xray", "run", "-config", str(XRAY_CONFIG_PATH)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
 
     def _xray_api_stats(self, name: str) -> str:
         result = self._run(
