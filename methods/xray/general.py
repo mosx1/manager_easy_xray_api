@@ -70,6 +70,33 @@ class EasyXray:
 
     _xray_process: subprocess.Popen[str] | None = None
 
+    @classmethod
+    def is_xray_running(cls) -> bool:
+        return cls._xray_process is not None and cls._xray_process.poll() is None
+
+    @classmethod
+    def stop_xray(cls) -> None:
+        process = cls._xray_process
+        if process is None or process.poll() is not None:
+            cls._xray_process = None
+            return
+
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        finally:
+            cls._xray_process = None
+
+    def _install_customgeo(self) -> None:
+        XRAY_DAT_DIR.mkdir(parents=True, exist_ok=True)
+        customgeo = self.root / "customgeo.dat"
+        if not customgeo.is_file():
+            raise EasyXrayError(f"customgeo.dat not copied to {XRAY_DAT_DIR}")
+        shutil.copy2(customgeo, XRAY_DAT_DIR / customgeo.name)
+
     def __init__(self, root: str | Path | None = None) -> None:
         self.root = Path(root or Path(__file__).resolve().parents[2])
         self.conf_dir = self.root / "conf"
@@ -574,6 +601,7 @@ class EasyXray:
             )
 
         server_config = await ConfigServer.get()
+        self._install_customgeo()
         with open(XRAY_CONFIG_PATH, "w") as config_file:
             json.dump(server_config, config_file, indent=2, ensure_ascii=False)
 
@@ -587,12 +615,7 @@ class EasyXray:
 
         process = type(self)._xray_process
         if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            type(self).stop_xray()
 
         type(self)._xray_process = subprocess.Popen(
             ["xray", "run", "-config", str(XRAY_CONFIG_PATH)],
@@ -698,12 +721,7 @@ class EasyXray:
                 "you should have root privileges to install xray, try"
             )
         await self.gen_config_server()
-
-        XRAY_DAT_DIR.mkdir(parents=True, exist_ok=True)
-        customgeo = self.root / "customgeo.dat"
-        if not customgeo.is_file():
-            raise EasyXrayError(f"customgeo.dat not copied to {XRAY_DAT_DIR}")
-        shutil.copy2(customgeo, XRAY_DAT_DIR / customgeo.name)
+        self._install_customgeo()
 
         if shutil.which("xray") and not force_reinstall:
             await self.push()
