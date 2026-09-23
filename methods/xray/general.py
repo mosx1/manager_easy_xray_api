@@ -527,7 +527,6 @@ class EasyXray:
             server_config["inbounds"][1]["streamSettings"]["realitySettings"][
                 "shortIds"
             ].append(short_id)
-            server_config["inbounds"][3]["settings"]["clients"].append({"id": user_id})
             self._write_json(server_path, server_config)
             imported.append(username)
 
@@ -550,24 +549,19 @@ class EasyXray:
         if ":" in address:
             address = f"[{address}]"
 
-        if network == "tcp":
-            port = outbound["settings"]["vnext"][0]["port"]
-            reality = outbound["streamSettings"]["realitySettings"]
-            public_key = reality["publicKey"]
-            server_name = reality["serverName"]
-            short_id = reality["shortId"]
-            return (
-                f"vless://{user_id}@{address}:{port}"
-                f"?fragment=&security=reality&encryption=none&pbk={public_key}"
-                f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
-                f"&sni={server_name}&sid={short_id}#kuzmos.ru"
-            )
+        if network != "tcp":
+            raise EasyXrayError(f"unsupported client transport network: {network}")
 
-        service_name = outbound["streamSettings"]["grpcSettings"]["serviceName"]
+        port = outbound["settings"]["vnext"][0]["port"]
+        reality = outbound["streamSettings"]["realitySettings"]
+        public_key = reality["publicKey"]
+        server_name = reality["serverName"]
+        short_id = reality["shortId"]
         return (
-            f"vless://{user_id}@{address}:443"
-            f"?security=tls&encryption=none&fp=chrome&type=grpc"
-            f"&serviceName={service_name}#{address}-kuzmos.ru"
+            f"vless://{user_id}@{address}:{port}"
+            f"?fragment=&security=reality&encryption=none&pbk={public_key}"
+            f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
+            f"&sni={server_name}&sid={short_id}#kuzmos.ru"
         )
 
     def write_client_links(self, output_file: str | Path | None = None) -> Path:
