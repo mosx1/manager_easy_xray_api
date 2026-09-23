@@ -135,6 +135,7 @@ jobs:
               --restart unless-stopped \
               --publish 443:443/tcp \
               --publish 8081:8081/tcp \
+              --publish 9443:9443/tcp \
               --volume "$CONFIG_FILE:/fastapiapp/config.ini:ro" \
               "$image"
           }

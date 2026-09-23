@@ -132,6 +132,7 @@
     },
     // main inbound, clients connect to it
     {
+      "tag": "reality-443",
       "listen": "0.0.0.0",
       "port": 443,
       "protocol": "vless",
@@ -191,6 +192,7 @@
     // extra inbound; its main purpose is to get fallback to "dest" at port 80. Many regular websites
     // have open ports 80 (http) and 443 (https).
     {
+      "tag": "reality-80",
       "listen": "0.0.0.0",
       "port": 80,
       "protocol": "vless",
@@ -245,6 +247,30 @@
           "tls"
         ],
         "routeOnly": true
+      }
+    },
+    // VLESS XHTTP behind host nginx (TLS on public_port, e.g. 8443)
+    {
+      "tag": "xhttp",
+      "listen": "127.0.0.1",
+      "port": 9443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "client_id",
+            "email": "client_email"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "mode": "auto",
+          "path": "/xhttp_path"
+        }
       }
     }
   ],

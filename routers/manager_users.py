@@ -18,11 +18,18 @@ router.include_router(query_auth_router)
 @query_auth_router.get("/add")
 async def _(user_id: int) -> dict:
     easy_xray = EasyXray()
-    link = (await easy_xray.add([str(user_id)]))[0]
+    user_links = (await easy_xray.add([str(user_id)]))[0]
 
-    if link:
-        return {"success": True, "link": link}
-    return {"success": False}
+    if not user_links.reality:
+        return {"success": False}
+
+    response: dict[str, str | bool] = {
+        "success": True,
+        "link": user_links.reality,
+    }
+    if user_links.xhttp:
+        response["xhttp_link"] = user_links.xhttp
+    return response
 
 
 @query_auth_router.get("/resume")

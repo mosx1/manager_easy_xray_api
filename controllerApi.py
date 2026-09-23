@@ -3,6 +3,7 @@ import subprocess, json, os
 from configparser import ConfigParser
 
 from methods.xray.config_server import ConfigServer
+from methods.xray.general import EasyXray, EasyXrayError
 
 
 def _client_link_config(user_id, public_key, server_name, short_id, host_name):
@@ -273,6 +274,72 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
     }
 
 
+def _client_xhttp_link_config(
+    user_id: str,
+    domain: str,
+    public_port: int,
+    path: str,
+    mode: str,
+    host_name: str,
+) -> dict:
+    link_config = _client_link_config(
+        user_id,
+        "unused",
+        domain,
+        "00",
+        host_name,
+    )
+    link_config["remarks"] = f"Выгодный ВПН XHTTP - {host_name}"
+    link_config["outbounds"] = [
+        {
+            "tag": "proxy",
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": domain,
+                        "port": public_port,
+                        "users": [
+                            {
+                                "encryption": "none",
+                                "id": user_id,
+                                "level": 8,
+                                "email": "",
+                            },
+                        ],
+                    },
+                ],
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": domain,
+                    "fingerprint": "chrome",
+                },
+                "xhttpSettings": {
+                    "path": path,
+                    "mode": mode,
+                },
+            },
+        },
+    ]
+    return link_config
+
+
+def _user_uuid_from_server_config(server_config: dict, user_id: str) -> str | None:
+    email = f"{user_id}@example.com"
+    for tag in ("xhttp", "reality-443"):
+        try:
+            inbound = EasyXray._inbound_by_tag(server_config, tag)
+        except EasyXrayError:
+            continue
+        for client in inbound["settings"]["clients"]:
+            if client.get("email") == email:
+                return client["id"]
+    return None
+
+
 async def create_link(userId: str):
     """
         Создает ссылку для пользователя по конфигурации
@@ -282,11 +349,13 @@ async def create_link(userId: str):
     config = ConfigParser()
     config.read("config.ini")
     server_config = await ConfigServer.get()
-    clients = server_config["inbounds"][1]["settings"]["clients"]
+    reality = EasyXray._inbound_by_tag(server_config, "reality-443")
+    clients = reality["settings"]["clients"]
+    short_ids = reality["streamSettings"]["realitySettings"]["shortIds"]
     for index, client in enumerate(clients):
         if client["email"] == f"{userId}@example.com":
             id = client["id"]
-            short_id = server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]
+            short_id = short_ids[index]
             break
     link_config = _client_link_config(
         id,
@@ -297,7 +366,35 @@ async def create_link(userId: str):
     )
     link = json.dumps(link_config, ensure_ascii=False)
     return link
-    
+
+
+async def create_xhttp_link(userId: str) -> str:
+    """
+    Создаёт JSON конфигурации клиента v2rayTun для VLESS XHTTP (TLS на public_port).
+    """
+    easy_xray = EasyXray()
+    if not easy_xray._xhttp_enabled():
+        raise EasyXrayError("XHTTP is disabled in config.ini ([Xhttp] enabled)")
+
+    server_config = await ConfigServer.get()
+    user_uuid = _user_uuid_from_server_config(server_config, userId)
+    if not user_uuid:
+        raise EasyXrayError(f"user {userId!r} not found in server config")
+
+    xhttp_inbound = EasyXray._inbound_by_tag(server_config, "xhttp")
+    xhttp_settings = xhttp_inbound["streamSettings"]["xhttpSettings"]
+    path = xhttp_settings.get("path") or easy_xray._xhttp_path_from_config()
+    mode = xhttp_settings.get("mode") or easy_xray._xhttp_mode()
+
+    link_config = _client_xhttp_link_config(
+        user_uuid,
+        easy_xray._xhttp_domain(),
+        easy_xray._xhttp_public_port(),
+        path,
+        mode,
+        easy_xray.config["Xray"]["hostName"],
+    )
+    return json.dumps(link_config, ensure_ascii=False)
 
 
 async def createLinkForApp(link: str):

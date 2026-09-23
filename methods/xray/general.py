@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from urllib.parse import quote
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -63,7 +64,15 @@ class ClientReality(BaseModel):
 class BaseClientConfig(BaseModel):
     user: User
     reality: ClientReality
-    
+
+
+@dataclass
+class UserLinks:
+    """Share links returned when adding a VPN user."""
+
+    reality: str
+    xhttp: str | None = None
+
 
 class EasyXray:
     """Administrate xray server configs (logic ported from ex.sh)."""
@@ -297,6 +306,138 @@ class EasyXray:
         )
         self._chown_if_sudo(path)
 
+    @staticmethod
+    def _inbound_by_tag(config: dict[str, Any], tag: str) -> dict[str, Any]:
+        for inbound in config.get("inbounds", []):
+            if inbound.get("tag") == tag:
+                return inbound
+        raise EasyXrayError(f"inbound with tag {tag!r} not found in server config")
+
+    @staticmethod
+    def _remove_inbound_by_tag(config: dict[str, Any], tag: str) -> None:
+        config["inbounds"] = [
+            inbound
+            for inbound in config.get("inbounds", [])
+            if inbound.get("tag") != tag
+        ]
+
+    def _xhttp_enabled(self) -> bool:
+        if "Xhttp" not in self.config:
+            return False
+        return self.config["Xhttp"].get("enabled", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+    def _xhttp_domain(self) -> str:
+        section = self.config["Xhttp"]
+        domain = section.get("domain", "").strip()
+        if domain:
+            return domain
+        return self.config["Xray"].get("hostName", "").strip()
+
+    def _xhttp_public_port(self) -> int:
+        return int(self.config["Xhttp"].get("public_port", "8443"))
+
+    def _xhttp_internal_port(self) -> int:
+        return int(self.config["Xhttp"].get("internal_port", "9443"))
+
+    def _xhttp_mode(self) -> str:
+        return self.config["Xhttp"].get("mode", "auto").strip() or "auto"
+
+    def _normalize_xhttp_path(self, path: str) -> str:
+        normalized = path.strip()
+        if not normalized:
+            return f"/{self._openssl_rand_hex(8)}"
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        if not normalized.endswith("/"):
+            normalized = f"{normalized}/"
+        return normalized
+
+    def _xhttp_path_from_config(self) -> str:
+        raw = self.config.get("Xhttp", "path", fallback="").strip()
+        return self._normalize_xhttp_path(raw)
+
+    def _sync_xhttp_clients_from_reality(
+        self,
+        server_config: dict[str, Any],
+    ) -> None:
+        reality = self._inbound_by_tag(server_config, "reality-443")
+        xhttp = self._inbound_by_tag(server_config, "xhttp")
+        xhttp_clients: list[dict[str, Any]] = []
+        for client in reality["settings"]["clients"]:
+            xhttp_clients.append(
+                {
+                    "id": client["id"],
+                    "email": client.get("email", DEFAULT_EMAIL),
+                }
+            )
+        xhttp["settings"]["clients"] = xhttp_clients
+
+    def _apply_xhttp_inbound(self, server_config: dict[str, Any]) -> None:
+        xhttp = self._inbound_by_tag(server_config, "xhttp")
+        xhttp["listen"] = "0.0.0.0"
+        xhttp["port"] = self._xhttp_internal_port()
+        path = self._xhttp_path_from_config()
+        xhttp["streamSettings"]["xhttpSettings"]["mode"] = self._xhttp_mode()
+        xhttp["streamSettings"]["xhttpSettings"]["path"] = path
+        self._sync_xhttp_clients_from_reality(server_config)
+
+    def _write_xhttp_nginx_site(self) -> None:
+        template_path = self.templates_dir / "template_nginx_xhttp.conf"
+        if not template_path.is_file():
+            raise EasyXrayError(f"nginx template not found: {template_path}")
+
+        domain = self._xhttp_domain()
+        path = self._xhttp_path_from_config()
+        content = template_path.read_text(encoding="utf-8")
+        content = content.replace("server_domain", domain)
+        content = content.replace("public_port", str(self._xhttp_public_port()))
+        content = content.replace("internal_port", str(self._xhttp_internal_port()))
+        content = content.replace("xhttp_path", path)
+
+        self.unsafe_mkdir(self.conf_dir)
+        site_path = self.conf_dir / f"nginx_xhttp_{domain}.conf"
+        site_path.write_text(content, encoding="utf-8")
+        self._chown_if_sudo(site_path)
+
+    def _build_reality_share_link(
+        self,
+        *,
+        user_id: str,
+        short_id: str,
+        host_name: str,
+        public_key: str,
+        fake_site: str,
+        port: int = 443,
+    ) -> str:
+        return (
+            f"vless://{user_id}@{host_name}:{port}"
+            f"?fragment=&security=reality&encryption=none&pbk={public_key}"
+            f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
+            f"&sni={fake_site}&sid={short_id}#{host_name}|kuzmos.ru"
+        )
+
+    def _build_xhttp_share_link(
+        self,
+        *,
+        user_id: str,
+        domain: str,
+        public_port: int,
+        path: str,
+        mode: str,
+    ) -> str:
+        encoded_path = quote(path, safe="")
+        return (
+            f"vless://{user_id}@{domain}:{public_port}"
+            f"?encryption=none&security=tls&type=xhttp&host={domain}"
+            f"&sni={domain}&fp=chrome&path={encoded_path}&mode={mode}"
+            f"#{domain}|xhttp-kuzmos.ru"
+        )
+
     # ------------------------------------------------------------------
     # Config generation
     # ------------------------------------------------------------------
@@ -335,18 +476,22 @@ class EasyXray:
         listen = "0.0.0.0"
 
         server_config = self.load_jsonc(self.templates_dir / "template_config_server.jsonc")
-        for inbound_index in (1, 2):
-            inbound = server_config["inbounds"][inbound_index]
+        for tag, dest_port in (("reality-443", 443), ("reality-80", 80)):
+            inbound = self._inbound_by_tag(server_config, tag)
             inbound["listen"] = listen
             inbound["settings"]["clients"][0]["id"] = user_id
             inbound["settings"]["clients"][0]["email"] = email
             reality = inbound["streamSettings"]["realitySettings"]
-            reality["dest"] = (
-                f"{fake_site}:443" if inbound_index == 1 else f"{fake_site}:80"
-            )
+            reality["dest"] = f"{fake_site}:{dest_port}"
             reality["serverNames"] = [fake_site]
             reality["privateKey"] = self.config["Xray"].get("private_key")
             reality["shortIds"] = [short_id]
+
+        if self._xhttp_enabled():
+            self._apply_xhttp_inbound(server_config)
+            self._write_xhttp_nginx_site()
+        else:
+            self._remove_inbound_by_tag(server_config, "xhttp")
 
         await ConfigServer.write(server_config)
 
@@ -374,21 +519,22 @@ class EasyXray:
 
     async def _existing_usernames(self, server_config: dict[str, Any]) -> dict[str, ConfParams]:
         usernames = {}
-        for index, client in enumerate(server_config["inbounds"][1]["settings"]["clients"]):
+        reality = self._inbound_by_tag(server_config, "reality-443")
+        short_ids = reality["streamSettings"]["realitySettings"]["shortIds"]
+        for index, client in enumerate(reality["settings"]["clients"]):
             email = client.get("email", "")
             if "@" in email:
                 usernames[email.split("@", 1)[0]] = ConfParams(
-                    address=server_config["inbounds"][1]["listen"],
+                    address=reality["listen"],
                     user_id=client.get("id", ""),
-                    short_id=server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]
+                    short_id=short_ids[index],
                 )
         return usernames
 
     async def add(
         self,
-        usernames: Sequence[str]
-    ) -> list[str]:
-        
+        usernames: Sequence[str],
+    ) -> list[UserLinks]:
         if not usernames:
             raise EasyXrayError(
                 "usernames not set\n"
@@ -398,41 +544,73 @@ class EasyXray:
             )
 
         server_config: dict = await ConfigServer.get()
-        config = ConfigParser()
-        config.read("config.ini")
+        xray_section = self.config["Xray"]
+        xhttp_enabled = self._xhttp_enabled()
+        xhttp_inbound: dict[str, Any] | None = None
+        xhttp_path = ""
+        xhttp_mode = ""
+        xhttp_domain = ""
+        xhttp_public_port = 8443
+        if xhttp_enabled:
+            xhttp_inbound = self._inbound_by_tag(server_config, "xhttp")
+            xhttp_settings = xhttp_inbound["streamSettings"]["xhttpSettings"]
+            xhttp_path = xhttp_settings.get("path") or self._xhttp_path_from_config()
+            xhttp_mode = xhttp_settings.get("mode") or self._xhttp_mode()
+            xhttp_domain = self._xhttp_domain()
+            xhttp_public_port = self._xhttp_public_port()
+
         existing: dict[str, ConfParams] = await self._existing_usernames(server_config)
-        links: list[str] = []
+        links: list[UserLinks] = []
         update = False
         for username in usernames:
+            email = f"{username}@example.com"
             if existing.get(username):
                 user_id = existing[username].user_id
                 short_id = existing[username].short_id
             else:
                 update = True
-                user_id: str = self._xray_uuid()
-                short_id: str = self._openssl_rand_hex(8)
+                user_id = self._xray_uuid()
+                short_id = self._openssl_rand_hex(8)
 
-                server_config["inbounds"][1]["settings"]["clients"].append(
+                reality = self._inbound_by_tag(server_config, "reality-443")
+                reality["settings"]["clients"].append(
                     {
                         "id": user_id,
-                        "email": f"{username}@example.com",
+                        "email": email,
                         "flow": "xtls-rprx-vision",
                     }
                 )
-                server_config["inbounds"][1]["streamSettings"]["realitySettings"][
-                    "shortIds"
-                ].append(short_id)
+                reality["streamSettings"]["realitySettings"]["shortIds"].append(
+                    short_id
+                )
+                if xhttp_inbound is not None:
+                    xhttp_inbound["settings"]["clients"].append(
+                        {"id": user_id, "email": email}
+                    )
+
             existing[username] = ConfParams(
-                address=server_config["inbounds"][1]["listen"],
+                address=self._inbound_by_tag(server_config, "reality-443")["listen"],
                 user_id=user_id,
-                short_id=short_id
+                short_id=short_id,
             )
-            links.append(
-                f"vless://{user_id}@{config['Xray']['hostName']}:443"
-                f"?fragment=&security=reality&encryption=none&pbk={config['Xray']['public_key']}"
-                f"&fp=firefox&type=tcp&flow=xtls-rprx-vision-udp443"
-                f"&sni={config['Xray']['fake_site']}&sid={short_id}#{config['Xray']['hostName']}|kuzmos.ru"
+            reality_link = self._build_reality_share_link(
+                user_id=user_id,
+                short_id=short_id,
+                host_name=xray_section["hostName"],
+                public_key=xray_section["public_key"],
+                fake_site=xray_section["fake_site"],
             )
+            xhttp_link: str | None = None
+            if xhttp_enabled:
+                xhttp_link = self._build_xhttp_share_link(
+                    user_id=user_id,
+                    domain=xhttp_domain,
+                    public_port=xhttp_public_port,
+                    path=xhttp_path,
+                    mode=xhttp_mode,
+                )
+            links.append(UserLinks(reality=reality_link, xhttp=xhttp_link))
+
         if update:
             await ConfigServer.write(server_config)
             await self.push()
@@ -446,14 +624,28 @@ class EasyXray:
             raise EasyXrayError("usernames not set")
 
         for username in usernames:
-
             server_config = await ConfigServer.get()
-            clients = server_config["inbounds"][1]["settings"]["clients"]
-            server_config["inbounds"][1]["settings"]["clients"] = []
-            for index,client in enumerate(clients):
-                if client.get("email") != f"{username}@example.com":
-                    server_config["inbounds"][1]["settings"]["clients"].append(client)
-                    del server_config["inbounds"][1]["streamSettings"]["realitySettings"]["shortIds"][index]  
+            email = f"{username}@example.com"
+            reality = self._inbound_by_tag(server_config, "reality-443")
+            clients = reality["settings"]["clients"]
+            short_ids = reality["streamSettings"]["realitySettings"]["shortIds"]
+            kept_clients: list[dict[str, Any]] = []
+            kept_short_ids: list[str] = []
+            for client, short_id in zip(clients, short_ids, strict=True):
+                if client.get("email") != email:
+                    kept_clients.append(client)
+                    kept_short_ids.append(short_id)
+            reality["settings"]["clients"] = kept_clients
+            reality["streamSettings"]["realitySettings"]["shortIds"] = kept_short_ids
+
+            if self._xhttp_enabled():
+                xhttp = self._inbound_by_tag(server_config, "xhttp")
+                xhttp["settings"]["clients"] = [
+                    client
+                    for client in xhttp["settings"]["clients"]
+                    if client.get("email") != email
+                ]
+
             await ConfigServer.write(server_config)
             await self.push()
 
@@ -517,16 +709,22 @@ class EasyXray:
                 self._write_json(cdn_user_path, cdn_config)
 
             server_config = json.loads(server_path.read_text(encoding="utf-8"))
-            server_config["inbounds"][1]["settings"]["clients"].append(
+            reality = self._inbound_by_tag(server_config, "reality-443")
+            reality["settings"]["clients"].append(
                 {
                     "id": user_id,
                     "email": f"{username}@example.com",
                     "flow": "xtls-rprx-vision",
                 }
             )
-            server_config["inbounds"][1]["streamSettings"]["realitySettings"][
-                "shortIds"
-            ].append(short_id)
+            reality["streamSettings"]["realitySettings"]["shortIds"].append(short_id)
+            try:
+                xhttp = self._inbound_by_tag(server_config, "xhttp")
+                xhttp["settings"]["clients"].append(
+                    {"id": user_id, "email": f"{username}@example.com"}
+                )
+            except EasyXrayError:
+                pass
             self._write_json(server_path, server_config)
             imported.append(username)
 
@@ -548,6 +746,21 @@ class EasyXray:
         address = outbound["settings"]["vnext"][0]["address"]
         if ":" in address:
             address = f"[{address}]"
+
+        if network == "xhttp":
+            port = outbound["settings"]["vnext"][0]["port"]
+            xhttp_settings = outbound["streamSettings"]["xhttpSettings"]
+            path = xhttp_settings.get("path", "/")
+            mode = xhttp_settings.get("mode", "auto")
+            tls = outbound["streamSettings"].get("tlsSettings") or {}
+            domain = tls.get("serverName") or address.strip("[]")
+            return self._build_xhttp_share_link(
+                user_id=user_id,
+                domain=domain,
+                public_port=port,
+                path=path,
+                mode=mode,
+            )
 
         if network != "tcp":
             raise EasyXrayError(f"unsupported client transport network: {network}")
@@ -666,7 +879,8 @@ class EasyXray:
             server_config = json.loads(
                 self._server_config_path().read_text(encoding="utf-8")
             )
-            for client in server_config["inbounds"][1]["settings"]["clients"]:
+            reality = self._inbound_by_tag(server_config, "reality-443")
+            for client in reality["settings"]["clients"]:
                 email = client["email"]
                 result.lines.append("")
                 result.lines.append(

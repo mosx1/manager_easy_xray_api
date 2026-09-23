@@ -36,7 +36,7 @@ RUN pip install -r requirements.txt
 COPY . /fastapiapp
 RUN install -m 0644 /fastapiapp/customgeo.dat /usr/local/share/xray/customgeo.dat
 
-EXPOSE 443 8081
+EXPOSE 443 8081 9443
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
     CMD curl --fail --silent http://127.0.0.1:8081/health || exit 1

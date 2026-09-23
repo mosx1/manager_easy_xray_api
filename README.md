@@ -80,7 +80,25 @@ port = 443
 public_key = Unknown
 private_key = Unknown
 fake_site = duckduckgo.com
+
+[Xhttp]
+enabled = false
+domain = fn2.kuzmos.ru
+public_port = 8443
+internal_port = 9443
+path = /your_secret_path/
+mode = auto
 ```
+
+При `enabled = true` (вариант A: Reality на **443**, XHTTP за nginx на **8443**):
+
+- в конфиг Xray добавляется inbound `xhttp` на `internal_port` (по умолчанию **9443**);
+- в каталог `conf/` пишется черновик `nginx_xhttp_<domain>.conf` для nginx на хосте;
+- контейнер публикует **9443** (`-p 9443:9443`), nginx проксирует `https://domain:8443` → `http://127.0.0.1:9443`;
+- `GET /add` возвращает `link` (Reality) и при включённом XHTTP — `xhttp_link`.
+
+После смены шаблона или включения XHTTP на уже развёрнутом сервере выполните
+`GET /install_xray`, чтобы обновить JSON в `configs_servers`.
 
 ## Docker
 
@@ -92,6 +110,7 @@ docker run --name manager-easy-xray-api \
   --restart unless-stopped \
   -p 443:443/tcp \
   -p 8081:8081/tcp \
+  -p 9443:9443/tcp \
   -v "$(pwd)/config.ini:/fastapiapp/config.ini:ro" \
   manager-easy-xray-api:latest
 ```
@@ -120,7 +139,9 @@ sudo chmod 600 /opt/manager-easy-xray-api/config.ini
 sudo chown -R <ssh-user>:<ssh-user> /opt/manager-easy-xray-api
 ```
 
-Порты `443/tcp` и `8081/tcp` должны быть свободны и разрешены в firewall.
+Порты `443/tcp`, `8081/tcp` и (при XHTTP) `9443/tcp` должны быть свободны.
+Для XHTTP дополнительно на хосте: nginx с TLS на `public_port` (например **8443**),
+сертификат Let's Encrypt для `Xhttp.domain`, конфиг из `conf/nginx_xhttp_*.conf`.
 Пакет GHCR должен быть доступен серверу: workflow логинится в `ghcr.io` на
 время деплоя через `GITHUB_TOKEN`.
 
