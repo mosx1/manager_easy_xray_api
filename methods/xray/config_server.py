@@ -1,9 +1,8 @@
 import json
 
-from configparser import ConfigParser
-
 from sqlalchemy import insert, select, update
 
+from app_config import load_config
 from db.db import async_session
 from models.servers import Configs_Servers, Servers
 
@@ -53,9 +52,7 @@ class ConfigServer:
 
 async def get_id_server_by_hostname(host_name: str | None = None) -> int | None:
     if not host_name:
-        config = ConfigParser()
-        config.read("config.ini")
-        host_name: str = config["Xray"].get("hostName")
+        host_name = load_config()["Xray"].get("hostName")
     if host_name:
         async with async_session() as session:
             server: Servers | None = await session.execute(

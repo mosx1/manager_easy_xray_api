@@ -1,18 +1,18 @@
 import asyncio
 import logging
-from configparser import ConfigParser
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app_config import load_config
+
 logger = logging.getLogger(__name__)
 
 RECONNECT_INTERVAL_SECONDS = 10
 
-config = ConfigParser()
-config.read("config.ini")
+config = load_config()
 
 databaseUrl = "{}+{}://{}:{}@{}/{}".format(
     config["DataBase"]["dialect"],

@@ -13,6 +13,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
+from app_config import load_config
 from methods.xray.config_server import ConfigServer
 
 from configparser import ConfigParser
@@ -111,9 +112,7 @@ class EasyXray:
         self.conf_dir = self.root / "conf"
         self.stats_log = self.root / "stats.log"
         self.templates_dir = self.root / "templates"
-        config = ConfigParser()
-        config.read("config.ini")
-        self.config = config
+        self.config = load_config()
 
     # ------------------------------------------------------------------
     # Utility helpers

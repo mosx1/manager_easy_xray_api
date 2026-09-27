@@ -1,7 +1,6 @@
 import subprocess, json, os
 
-from configparser import ConfigParser
-
+from app_config import load_config
 from methods.xray.config_server import ConfigServer
 from methods.xray.general import EasyXray, EasyXrayError
 
@@ -346,8 +345,7 @@ async def create_link(userId: str):
     """
     id = None
     short_id = None
-    config = ConfigParser()
-    config.read("config.ini")
+    config = load_config()
     server_config = await ConfigServer.get()
     reality = EasyXray._inbound_by_tag(server_config, "reality-443")
     clients = reality["settings"]["clients"]
