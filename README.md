@@ -57,8 +57,9 @@ API для управления проектом https://github.com/EvgenyNerush
 - `users.server_id` → `servers.id`
 - `users.invited` → `users.telegram_id`
 
-Перед первым `/add` на новом хосте нужны строка в `servers` (с `links`, содержащим
-`Xray.hostName`) и конфиг в `configs_servers` (создаётся через `/install_xray`).
+Перед первым `/add` на новом хосте нужна строка в `servers` (с `links`, содержащим
+`Xray.hostName`). Запись в `configs_servers` и запуск Xray выполняются автоматически
+при первом `/add`.
 
 Для конфигурации приложения создайте файл config.ini. В Docker он монтируется в контейнер
 read-only и не попадает в образ.
@@ -97,8 +98,8 @@ mode = auto
 - контейнер публикует **9443** (`-p 9443:9443`), nginx проксирует `https://domain:8443` → `http://127.0.0.1:9443`;
 - `GET /add` возвращает `link` (Reality) и при включённом XHTTP — `xhttp_link`.
 
-После смены шаблона или включения XHTTP на уже развёрнутом сервере выполните
-`GET /install_xray`, чтобы обновить JSON в `configs_servers`.
+После смены шаблона или включения XHTTP обновите конфиг в `configs_servers` вручную
+или через резервное копирование/восстановление (`/backup_config`).
 
 ## Docker
 
@@ -117,7 +118,7 @@ docker run --name manager-easy-xray-api \
 
 После запуска API восстанавливает конфигурацию Xray из PostgreSQL, если она
 уже есть, и запускает Xray. Состояние контейнера доступно по адресу
-`GET /health`. Первый запуск на новом сервере требует `GET /install_xray`.
+`GET /health`. Первый пользователь добавляется через `GET /add` (Xray поднимется сам).
 
 ## GitHub CI/CD
 

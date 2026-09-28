@@ -530,6 +530,38 @@ class EasyXray:
                 )
         return usernames
 
+    async def ensure_xray_running(self) -> None:
+        """Create server config if missing, install xray if needed, start the process."""
+        if os.geteuid() != 0:
+            raise EasyXrayError(
+                "you should have root privileges for that, try"
+            )
+
+        config_missing = False
+        try:
+            await ConfigServer.get()
+        except RuntimeError:
+            config_missing = True
+
+        if config_missing:
+            await self.gen_config_server()
+
+        self._install_customgeo()
+
+        if not shutil.which("xray"):
+            self.check_command(
+                "curl",
+                "required to download the xray installation script",
+            )
+            install_script = self._run(
+                ["curl", "-L", XRAY_INSTALL_URL],
+                capture_output=True,
+            ).stdout
+            self._run(["bash", "-c", install_script, "@", "install"])
+
+        if not type(self).is_xray_running():
+            await self.push()
+
     async def add(
         self,
         usernames: Sequence[str],
@@ -541,6 +573,8 @@ class EasyXray:
                 "by install command. Otherwise use non-void usernames, "
                 "preferably of letters and digits only."
             )
+
+        await self.ensure_xray_running()
 
         server_config: dict = await ConfigServer.get()
         xray_section = self.config["Xray"]
@@ -915,52 +949,6 @@ class EasyXray:
                 raise EasyXrayError("statistics reset failed")
 
         return result
-
-    async def install_xray(
-        self,
-        *,
-        setup_cdn: bool = False,
-        force_reinstall: bool = False,
-    ) -> None:
-        """Download and install xray using the official install script."""
-        if os.geteuid() != 0:
-            raise EasyXrayError(
-                "you should have root privileges to install xray, try"
-            )
-        await self.gen_config_server()
-        self._install_customgeo()
-
-        if shutil.which("xray") and not force_reinstall:
-            await self.push()
-            return
-
-        self.check_command(
-            "curl",
-            "required to download the xray installation script",
-        )
-        install_script = self._run(
-            ["curl", "-L", XRAY_INSTALL_URL],
-            capture_output=True,
-        ).stdout
-        self._run(["bash", "-c", install_script, "@", "install"])
-
-        if setup_cdn:
-            cert_pem = self.root / "cert.pem"
-            cert_key = self.root / "cert.key"
-            nginx_conf = self.root / "nginx.conf"
-            if not cert_pem.is_file() or not cert_key.is_file() or not nginx_conf.is_file():
-                raise EasyXrayError(
-                    "no Cloudflare certificates cert.* or no nginx.conf found, aborting"
-                )
-            Path("/etc/ssl/certs/").mkdir(parents=True, exist_ok=True)
-            Path("/etc/ssl/private/").mkdir(parents=True, exist_ok=True)
-            NGINX_SITES_ENABLED.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cert_pem, Path("/etc/ssl/certs/cert.pem"))
-            shutil.copy2(cert_key, Path("/etc/ssl/private/cert.key"))
-            shutil.copy2(nginx_conf, Path("/etc/nginx/nginx.conf"))
-            self._run(["systemctl", "enable", "nginx"], check=False)
-
-        await self.push()
 
     def upgrade_xray(self) -> None:
         """Upgrade xray without touching configs."""

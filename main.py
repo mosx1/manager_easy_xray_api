@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 async def restoreXrayLoop(stopEvent: asyncio.Event) -> None:
     while not stopEvent.is_set():
         try:
-            await EasyXray().push()
+            easy_xray = EasyXray()
+            if type(easy_xray).is_xray_running():
+                return
+            await easy_xray.ensure_xray_running()
             logger.info("Xray configuration restored and process started")
             return
         except Exception as error:

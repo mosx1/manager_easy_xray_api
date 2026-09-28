@@ -43,7 +43,7 @@ class ConfigServer:
             configs = configs.scalar()
             if configs is None:
                 raise RuntimeError(
-                    "Конфигурация Xray не найдена. Сначала вызовите /install_xray"
+                    "Конфигурация Xray не найдена в базе данных"
                 )
             if isinstance(configs.config, str):
                 return json.loads(configs.config)
