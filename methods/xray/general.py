@@ -306,6 +306,61 @@ class EasyXray:
         self._chown_if_sudo(path)
 
     @staticmethod
+    def _migrate_legacy_inbound_tags(server_config: dict[str, Any]) -> bool:
+        """Assign tags on configs created before template used reality-443 / reality-80."""
+        inbounds = server_config.get("inbounds", [])
+        changed = False
+
+        def set_tag(inbound: dict[str, Any], tag: str) -> None:
+            nonlocal changed
+            if inbound.get("tag") == tag:
+                return
+            inbound["tag"] = tag
+            changed = True
+
+        for inbound in inbounds:
+            if inbound.get("tag"):
+                continue
+            protocol = inbound.get("protocol")
+            port = inbound.get("port")
+            stream = inbound.get("streamSettings") or {}
+
+            if protocol == "dokodemo-door":
+                set_tag(inbound, "api")
+                continue
+            if protocol != "vless":
+                continue
+
+            network = stream.get("network", "tcp")
+            if network == "xhttp":
+                set_tag(inbound, "xhttp")
+            elif network == "grpc":
+                set_tag(inbound, "grpc")
+            elif stream.get("realitySettings") or stream.get("security") == "reality":
+                set_tag(inbound, "reality-80" if port == 80 else "reality-443")
+
+        if not any(inbound.get("tag") == "reality-443" for inbound in inbounds):
+            tagged_reality_443 = False
+            for inbound in inbounds:
+                if inbound.get("tag"):
+                    continue
+                stream = inbound.get("streamSettings") or {}
+                if inbound.get("protocol") == "vless" and stream.get("realitySettings"):
+                    set_tag(
+                        inbound,
+                        "reality-80" if inbound.get("port") == 80 else "reality-443",
+                    )
+                    tagged_reality_443 = inbound.get("tag") == "reality-443"
+                    break
+            if not tagged_reality_443 and len(inbounds) > 1 and inbounds[1].get("protocol") == "vless":
+                set_tag(inbounds[1], "reality-443")
+            if len(inbounds) > 2 and inbounds[2].get("protocol") == "vless":
+                if not inbounds[2].get("tag"):
+                    set_tag(inbounds[2], "reality-80")
+
+        return changed
+
+    @staticmethod
     def _inbound_by_tag(config: dict[str, Any], tag: str) -> dict[str, Any]:
         for inbound in config.get("inbounds", []):
             if inbound.get("tag") == tag:
@@ -522,6 +577,13 @@ class EasyXray:
 
         return False
 
+    async def _reconcile_legacy_inbound_tags(self) -> bool:
+        server_config = await ConfigServer.get()
+        if not self._migrate_legacy_inbound_tags(server_config):
+            return False
+        await ConfigServer.write(server_config)
+        return True
+
     # ------------------------------------------------------------------
     # User management
     # ------------------------------------------------------------------
@@ -575,8 +637,11 @@ class EasyXray:
         if config_missing:
             await self.gen_config_server()
             config_updated = True
-        elif await self._reconcile_xhttp_with_ini():
-            config_updated = True
+        else:
+            if await self._reconcile_legacy_inbound_tags():
+                config_updated = True
+            if await self._reconcile_xhttp_with_ini():
+                config_updated = True
 
         self._install_customgeo()
 
