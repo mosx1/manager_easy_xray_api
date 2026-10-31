@@ -1,0 +1,50 @@
+{
+  "log": {
+    "access": "none",
+    "error": "",
+    "loglevel": "warning",
+    "dnsLog": false
+  },
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "server_domain",
+            "port": 8443,
+            "users": [
+              {
+                "id": "client_id",
+                "email": "client_email",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "server_domain",
+          "fingerprint": "chrome"
+        },
+        "xhttpSettings": {
+          "mode": "auto",
+          "path": "/xhttp_path"
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ]
+}

@@ -1,29 +1,14 @@
 import subprocess, json, os
-from configparser import ConfigParser
+
+from app_config import load_config
+from methods.xray.config_server import ConfigServer
+from methods.xray.general import EasyXray, EasyXrayError
 
 
-async def add_user(user_id: int) -> str:
-    """
-        Создает пользоавтеля в xray
-    """
-    try:
-        subprocess.check_output(
-            (
-                "/root/easy-xray-main/ex.sh add {}".format(user_id)
-            ), 
-            shell=True
-        )
-    except subprocess.CalledProcessError as e:
-        return e.output
-
-    return await create_link(user_id)
-
-
-
-def _client_link_config(user_id, port, public_key, server_name, short_id, host_name):
+def _client_link_config(user_id, public_key, server_name, short_id, host_name):
     return {
         "log": {},
-        "remarks": f"Выгодный ВПН - {host_name}",
+        "remarks": f"🍜 Выгодный ВПН - {host_name}",
         "inbounds": [
             {
                 "settings": {
@@ -86,7 +71,7 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "settings": {
                     "vnext": [
                         {
-                            "port": port,
+                            "port": 443,
                             "users": [
                                 {
                                     "encryption": "none",
@@ -124,10 +109,6 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
                 "tag": "fragment",
                 "protocol": "freedom",
             },
-            {
-                "tag": "direct",
-                "protocol": "freedom"
-            }
         ],
         "api": {
             "tag": "api",
@@ -203,38 +184,12 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
             "rules": [
                 {
                     "type": "field",
-                        "domain": [
-                        "geosite:cn",
-                        "domain:cn",
-                        "domain:xn--fiqs8s",
-                        "domain:xn--fiqz9s",
-                        "domain:xn--55qx5d",
-                        "domain:xn--io0a7i",
-                        "domain:ru",
-                        "domain:xn--p1ai",
-                        "domain:by",
-                        "domain:xn--90ais",
-                        "domain:ir",
-                        "geosite:apple"
-                    ],
-                    "outboundTag": "direct"
-                },
-                {
-                    "type": "field",
-                    "ip": [
-                        "geoip:cn",
-                        "geoip:ru",
-                        "geoip:by",
-                        "geoip:ir"
-                    ],
-                    "outboundTag": "direct"
-                },
-                {
-                    "type": "field",
                     "outboundTag": "direct",
                     "domain": [
                         "geosite:private",
                         "geosite:apple",
+                        "geosite:ru",
+                        "geoip:ru"
                     ],
                     "ruleTag": "rule-0",
                 },
@@ -320,35 +275,126 @@ def _client_link_config(user_id, port, public_key, server_name, short_id, host_n
     }
 
 
+def _client_xhttp_link_config(
+    user_id: str,
+    domain: str,
+    public_port: int,
+    path: str,
+    mode: str,
+    host_name: str,
+) -> dict:
+    link_config = _client_link_config(
+        user_id,
+        "unused",
+        domain,
+        "00",
+        host_name,
+    )
+    link_config["remarks"] = f"Выгодный ВПН XHTTP - {host_name}"
+    link_config["outbounds"] = [
+        {
+            "tag": "proxy",
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": domain,
+                        "port": public_port,
+                        "users": [
+                            {
+                                "encryption": "none",
+                                "id": user_id,
+                                "level": 8,
+                                "email": "",
+                            },
+                        ],
+                    },
+                ],
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": domain,
+                    "fingerprint": "chrome",
+                },
+                "xhttpSettings": {
+                    "path": path,
+                    "mode": mode,
+                },
+            },
+        },
+    ]
+    return link_config
+
+
+def _user_uuid_from_server_config(server_config: dict, user_id: str) -> str | None:
+    email = f"{user_id}@example.com"
+    for tag in ("xhttp", "reality-443"):
+        try:
+            inbound = EasyXray._inbound_by_tag(server_config, tag)
+        except EasyXrayError:
+            continue
+        for client in inbound["settings"]["clients"]:
+            if client.get("email") == email:
+                return client["id"]
+    return None
+
+
 async def create_link(userId: str):
     """
         Создает ссылку для пользователя по конфигурации
     """
+    id = None
+    short_id = None
+    config = load_config()
+    server_config = await ConfigServer.get()
+    reality = EasyXray._inbound_by_tag(server_config, "reality-443")
+    clients = reality["settings"]["clients"]
+    short_ids = reality["streamSettings"]["realitySettings"]["shortIds"]
+    for index, client in enumerate(clients):
+        if client["email"] == f"{userId}@example.com":
+            id = client["id"]
+            short_id = short_ids[index]
+            break
+    link_config = _client_link_config(
+        id,
+        config["Xray"]["public_key"],
+        config["Xray"]["fake_site"],
+        short_id,
+        config["Xray"]["hostName"],
+    )
+    link = json.dumps(link_config, ensure_ascii=False)
+    return link
 
-    config = ConfigParser()
-    config.read("config.ini")
 
-    with open("/root/easy-xray-main/conf/config_client_{}.json".format(userId)) as file:
+async def create_xhttp_link(userId: str) -> str:
+    """
+    Создаёт JSON конфигурации клиента v2rayTun для VLESS XHTTP (TLS на public_port).
+    """
+    easy_xray = EasyXray()
+    if not easy_xray._xhttp_enabled():
+        raise EasyXrayError("XHTTP is disabled in config.ini ([Xhttp] enabled)")
 
-        jsonData = json.load(file)
+    server_config = await ConfigServer.get()
+    user_uuid = _user_uuid_from_server_config(server_config, userId)
+    if not user_uuid:
+        raise EasyXrayError(f"user {userId!r} not found in server config")
 
-        id = jsonData["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
-        port = jsonData["outbounds"][0]["settings"]["vnext"][0]["port"]
-        public_key = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["publicKey"]
-        server_name = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["serverName"]
-        short_id = jsonData["outbounds"][0]["streamSettings"]["realitySettings"]["shortId"]
-        host_name = config['Xray']['hostName']
-        link_config = _client_link_config(
-            id,
-            port,
-            public_key,
-            server_name,
-            short_id,
-            host_name,
-        )
-        link = json.dumps(link_config, ensure_ascii=False)
-        return link
-    
+    xhttp_inbound = EasyXray._inbound_by_tag(server_config, "xhttp")
+    xhttp_settings = xhttp_inbound["streamSettings"]["xhttpSettings"]
+    path = xhttp_settings.get("path") or easy_xray._xhttp_path_from_config()
+    mode = xhttp_settings.get("mode") or easy_xray._xhttp_mode()
+
+    link_config = _client_xhttp_link_config(
+        user_uuid,
+        easy_xray._xhttp_domain(),
+        easy_xray._xhttp_public_port(),
+        path,
+        mode,
+        easy_xray.config["Xray"]["hostName"],
+    )
+    return json.dumps(link_config, ensure_ascii=False)
 
 
 async def createLinkForApp(link: str):
@@ -376,7 +422,7 @@ async def suspendUser(userId: str) -> bool:
 
 
 
-async def resumeUser(userId: str):
+async def resumeUser(userId: int):
     """
         Возобновляет доступ пользователя к xray
     """
@@ -404,25 +450,6 @@ async def suspend_users(user_ids: set[int]) -> bool:
         return False
 
 
-async def del_users(user_ids: set[int]) -> bool:
-    """
-        Удаляет пользователей с сервера
-    """
-    try:
-
-        users: str = ' '.join([str(user_id) for user_id in user_ids])
-
-        subprocess.check_output(
-            (f"/root/easy-xray-main/ex.sh del {users}"),
-            shell=True
-        )
-        return True
-    except subprocess.CalledProcessError as e:
-        return False
-    
-
-
-
 async def getStatistic():
     """
         Получает статистику по пользователям
@@ -447,19 +474,3 @@ async def getStatistic():
                     dictRes[arrResult[0]][tempArrResult[0]] = arrResult[1][:-2]
 
         return dictRes
-    
-
-
-async def checkExistsUser(userId: str) -> bool:
-    """
-        Проверяет существует ли пользователь в файле конфигурации сервера
-    """
-    email = "{}@example.com".format(userId)
-
-    with open('/usr/local/etc/xray/config.json', 'r') as configFile:
-        configData = json.loads(configFile.read())
-        clients = configData['inbounds'][1]['settings']['clients']
-        for client in clients:
-            if client['email'] == email:
-                return True
-    return False

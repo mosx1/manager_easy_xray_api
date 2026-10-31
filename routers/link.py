@@ -1,36 +1,14 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
-from fastapi.responses import RedirectResponse
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from db.db import get_session
-
-from methods.methods import successAuth
 
 from controllerApi import create_link
 
+from deps.auth import require_query_auth
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(require_query_auth)],
+    tags=["links"],
+)
 
-
-
-@router.get("/linkforapp")
-async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
-    """
-        Отдает ссылку для конфигурации пользователя
-    """
-    if not await successAuth(db, token):
-        return {'success': 'Ошибка авторизации'}
-    return RedirectResponse(f"v2raytun://import/{ await create_link(str(userId))}")
-
-
-
-@router.get("/linkconf")
-async def _(token: str, userId: int, db: AsyncSession = Depends(get_session)):
-    """
-        Отдает ссылку для конфигурации пользователя
-    """
-    if not await successAuth(db, token):
-        return {'success': 'Ошибка авторизации'}
+@router.get("/linkconf", summary="JSON конфиг клиента (Reality) для v2rayTun")
+async def link_conf(userId: int):
     return {"link": await create_link(str(userId))}
