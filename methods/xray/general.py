@@ -494,6 +494,34 @@ class EasyXray:
 
         await ConfigServer.write(server_config)
 
+    async def _reconcile_xhttp_with_ini(self) -> bool:
+        """Align xhttp inbound in DB config with [Xhttp] in config.ini."""
+        server_config = await ConfigServer.get()
+        has_xhttp = any(
+            inbound.get("tag") == "xhttp"
+            for inbound in server_config.get("inbounds", [])
+        )
+
+        if self._xhttp_enabled():
+            if not has_xhttp:
+                template = self.load_jsonc(
+                    self.templates_dir / "template_config_server.jsonc"
+                )
+                server_config["inbounds"].append(
+                    self._inbound_by_tag(template, "xhttp")
+                )
+            self._apply_xhttp_inbound(server_config)
+            self._write_xhttp_nginx_site()
+            await ConfigServer.write(server_config)
+            return True
+
+        if has_xhttp:
+            self._remove_inbound_by_tag(server_config, "xhttp")
+            await ConfigServer.write(server_config)
+            return True
+
+        return False
+
     # ------------------------------------------------------------------
     # User management
     # ------------------------------------------------------------------
@@ -543,8 +571,12 @@ class EasyXray:
         except RuntimeError:
             config_missing = True
 
+        config_updated = False
         if config_missing:
             await self.gen_config_server()
+            config_updated = True
+        elif await self._reconcile_xhttp_with_ini():
+            config_updated = True
 
         self._install_customgeo()
 
@@ -559,7 +591,7 @@ class EasyXray:
             ).stdout
             self._run(["bash", "-c", install_script, "@", "install"])
 
-        if not type(self).is_xray_running():
+        if not type(self).is_xray_running() or config_updated:
             await self.push()
 
     async def add(
@@ -620,7 +652,11 @@ class EasyXray:
                     xhttp_inbound["settings"]["clients"].append(
                         {"id": user_id, "email": email}
                     )
-
+            if user_id is None:
+                raise EasyXrayError("user_id is None")
+            if short_id is None:
+                raise EasyXrayError("short_id is None")
+                
             existing[username] = ConfParams(
                 address=self._inbound_by_tag(server_config, "reality-443")["listen"],
                 user_id=user_id,

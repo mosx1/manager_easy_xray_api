@@ -117,9 +117,9 @@
         "security": "reality",
         "realitySettings": {
           // tls client hello fingerprint; here client appears as chrome to websites
-          "fingerprint": "firefox",
+          "fingerprint": "chrome",
           // fake server name which client is attempting to connect in the TLS handshake
-          "serverName": "www.youtube.com",
+          "serverName": "apple.com",
           // optional; if true, outputs debug information
           "show": false,
           // paired with privateKey from server config
@@ -213,9 +213,7 @@
             // punycode for national Belorussian top-level domain .бел
             "domain:xn--90ais",
             "domain:ir",
-            // extra domains that are used by domestic sites, see https://github.com/EvgenyNerush/coherence-grabber/tree/main
-            "ext:customgeo.dat:coherence-extra",
-            "ext:customgeo.dat:coherence-extra-plus"
+            "geosite:apple"
         ],
         "outboundTag": "direct"
       },
