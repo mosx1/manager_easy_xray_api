@@ -9,14 +9,21 @@ from entities.statistic import RequestStatustic
 from methods.xray.statistic import get_statustic_to_users
 from methods.xray.general import EasyXray
 
-router = APIRouter()
+router = APIRouter(tags=["users"])
 
 query_auth_router = APIRouter(dependencies=[Depends(require_query_auth)])
 router.include_router(query_auth_router)
 
 
-@query_auth_router.get("/add")
-async def _(user_id: int) -> dict:
+@query_auth_router.get(
+    "/add",
+    summary="Добавить пользователя в Xray",
+    description=(
+        "Создаёт или возвращает VLESS-ссылки (Reality и при включённом XHTTP — xhttp_link). "
+        "Query: `user_id`, `token` (токен из таблицы securityhashs)."
+    ),
+)
+async def add_user(user_id: int) -> dict:
     easy_xray = EasyXray()
     user_links = (await easy_xray.add([str(user_id)]))[0]
 
@@ -32,15 +39,15 @@ async def _(user_id: int) -> dict:
     return response
 
 
-@query_auth_router.get("/resume")
-async def _(userId: int):
+@query_auth_router.get("/resume", summary="Возобновить пользователя")
+async def resume_user(userId: int):
     if await resumeUser(userId):
         return {"success": True}
     return {"success": False}
 
 
-@router.post("/suspend")
-async def _(
+@router.post("/suspend", summary="Приостановить пользователей")
+async def suspend_users_endpoint(
     data: Annotated[SuspendUsers, Depends(authenticated_body(SuspendUsers))],
 ) -> dict[str, bool]:
     if await suspend_users(data.user_ids):
@@ -48,8 +55,8 @@ async def _(
     return {"success": False}
 
 
-@router.post("/del")
-async def _(
+@router.post("/del", summary="Удалить пользователей из Xray")
+async def delete_users(
     data: Annotated[DelUsers, Depends(authenticated_body(DelUsers))],
 ):
     easy_xray = EasyXray()
@@ -57,11 +64,11 @@ async def _(
     return {"success": True}
 
 
-@router.post("/statistic")
-async def _(
+@router.post(
+    "/statistic",
+    summary="Статистика трафика по пользователям",
+)
+async def user_statistic(
     data: Annotated[RequestStatustic, Depends(authenticated_body(RequestStatustic))],
 ):
-    """
-        Статистика входящего трафика по id пользователя
-    """
     return {"link": get_statustic_to_users(data.user_ids)}
