@@ -188,6 +188,8 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
                     "domain": [
                         "geosite:private",
                         "geosite:apple",
+                        "geosite:ru",
+                        "geoip:ru"
                     ],
                     "ruleTag": "rule-0",
                 },
