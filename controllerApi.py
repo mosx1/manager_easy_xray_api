@@ -184,14 +184,28 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
             "rules": [
                 {
                     "type": "field",
-                    "outboundTag": "direct",
                     "domain": [
-                        "geosite:private",
-                        "geosite:apple",
-                        "geosite:ru",
-                        "geoip:ru"
+                    "geosite:cn",
+                    "domain:cn",
+                    "domain:xn--fiqs8s",
+                    "domain:xn--fiqz9s",
+                    "domain:xn--55qx5d",
+                    "domain:xn--io0a7i",
+                    "domain:ru",
+                    "domain:xn--p1ai",
+                    "domain:by",
+                    "domain:xn--90ais",
+                    "domain:ir",
+                    "geosite:apple",
+                    "geosite:private",
+                    "geosite:apple",
+                    "geosite:ru",
+                    "geoip:cn",
+                    "geoip:ru",
+                    "geoip:by",
+                    "geoip:ir"
                     ],
-                    "ruleTag": "rule-0",
+                    "outboundTag": "direct"
                 },
                 {
                     "type": "field",
@@ -216,15 +230,6 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
                     ],
                     "outboundTag": "direct",
                     "ruleTag": "rule-3",
-                },
-                {
-                    "type": "field",
-                    "outboundTag": "direct",
-                    "domain": [
-                        "geosite:private",
-                        "geosite:apple",
-                    ],
-                    "ruleTag": "rule-4",
                 },
                 {
                     "type": "field",
