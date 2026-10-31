@@ -28,9 +28,13 @@ API для управления проектом https://github.com/EvgenyNerush
 
 | Поле      | Тип        | Описание                    |
 |-----------|------------|-----------------------------|
-| id        | bigint, PK | Идентификатор записи        |
-| server_id | bigint, FK | `servers.id`                |
-| config    | jsonb      | Конфигурация Xray (сервер)  |
+| id          | bigint, PK | Идентификатор записи        |
+| server_id   | bigint, FK | `servers.id`                |
+| config      | jsonb      | Конфигурация Xray (сервер)  |
+| update_date | timestamp without time zone | Время последней записи конфига |
+
+На существующей БД при отсутствии колонки:  
+`ALTER TABLE configs_servers ADD COLUMN IF NOT EXISTS update_date timestamp without time zone;`
 
 ### users
 

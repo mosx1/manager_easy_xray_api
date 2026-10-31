@@ -1,9 +1,9 @@
 from typing import Any
 
-from sqlalchemy import Column
+from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
-
+from datetime import datetime
 
 
 class Servers(SQLModel, table=True):
@@ -17,3 +17,7 @@ class Configs_Servers(SQLModel, table=True):
     id: int = Field(primary_key=True)
     server_id: int = Field(foreign_key="servers.id")
     config: dict[str, Any] = Field(sa_column=Column(JSONB))
+    update_date: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=False)),
+    )

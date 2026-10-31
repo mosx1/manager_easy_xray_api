@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from sqlalchemy import insert, select, update
 
@@ -13,6 +14,7 @@ class ConfigServer:
     async def write(cls, text: dict | str):
         config_data = json.loads(text) if isinstance(text, str) else text
         server_id = await get_id_server_by_hostname()
+        updated_at = datetime.now().replace(tzinfo=None)
         async with async_session() as session:
             configs = await session.execute(
                 select(Configs_Servers).where(Configs_Servers.server_id == server_id)
@@ -22,13 +24,14 @@ class ConfigServer:
                 await session.execute(
                     update(Configs_Servers)
                     .where(Configs_Servers.server_id == server_id)
-                    .values(config=config_data)
+                    .values(config=config_data, update_date=updated_at)
                 )
             else:
                 await session.execute(
                     insert(Configs_Servers).values(
                         server_id=server_id,
                         config=config_data,
+                        update_date=updated_at,
                     )
                 )
             await session.commit()
