@@ -11,17 +11,15 @@ from methods.xray.general import EasyXray
 
 router = APIRouter(tags=["users"])
 
-query_auth_router = APIRouter(dependencies=[Depends(require_query_auth)])
-router.include_router(query_auth_router)
 
-
-@query_auth_router.get(
+@router.get(
     "/add",
     summary="Добавить пользователя в Xray",
     description=(
         "Создаёт или возвращает VLESS-ссылки (Reality и при включённом XHTTP — xhttp_link). "
         "Query: `user_id`, `token` (токен из таблицы securityhashs)."
     ),
+    dependencies=[Depends(require_query_auth)],
 )
 async def add_user(user_id: int) -> dict:
     easy_xray = EasyXray()
@@ -39,7 +37,11 @@ async def add_user(user_id: int) -> dict:
     return response
 
 
-@query_auth_router.get("/resume", summary="Возобновить пользователя")
+@router.get(
+    "/resume",
+    summary="Возобновить пользователя",
+    dependencies=[Depends(require_query_auth)],
+)
 async def resume_user(userId: int):
     if await resumeUser(userId):
         return {"success": True}
