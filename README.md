@@ -96,7 +96,7 @@ mode = auto
 - в конфиг Xray добавляется inbound `xhttp` на `internal_port` (по умолчанию **9443**);
 - в каталог `conf/` пишется черновик `nginx_xhttp_<domain>.conf` для nginx на хосте;
 - контейнер публикует **9443** (`-p 9443:9443`), nginx проксирует `https://domain:8443` → `http://127.0.0.1:9443`;
-- `GET /add` возвращает `link` (Reality) и при включённом XHTTP — `xhttp_link`.
+- `GET /add` возвращает `link` — JSON-подписку для клиента (Reality); при XHTTP — `xhttp_link`.
 
 После смены шаблона или включения XHTTP обновите конфиг в `configs_servers` вручную
 или через резервное копирование/восстановление (`/backup_config`).
