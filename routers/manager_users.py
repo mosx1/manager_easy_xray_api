@@ -2,9 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from controllerApi import resumeUser, suspend_users
 from deps.auth import authenticated_body, require_query_auth
-from entities.manager_users import DelUsers, SuspendUsers
+from entities.manager_users import DelUsers
 from entities.statistic import RequestStatustic
 from methods.xray.statistic import get_statustic_to_users
 from methods.xray.general import EasyXray
@@ -35,26 +34,6 @@ async def add_user(user_id: int) -> dict:
     if user_links.xhttp:
         response["xhttp_link"] = user_links.xhttp
     return response
-
-
-@router.get(
-    "/resume",
-    summary="Возобновить пользователя",
-    dependencies=[Depends(require_query_auth)],
-)
-async def resume_user(userId: int):
-    if await resumeUser(userId):
-        return {"success": True}
-    return {"success": False}
-
-
-@router.post("/suspend", summary="Приостановить пользователей")
-async def suspend_users_endpoint(
-    data: Annotated[SuspendUsers, Depends(authenticated_body(SuspendUsers))],
-) -> dict[str, bool]:
-    if await suspend_users(data.user_ids):
-        return {"success": True}
-    return {"success": False}
 
 
 @router.post("/del", summary="Удалить пользователей из Xray")
