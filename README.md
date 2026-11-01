@@ -103,7 +103,27 @@ mode = auto
 - `GET /add` возвращает `link` — JSON-подписку для клиента (Reality); при XHTTP — `xhttp_link`.
 
 После смены шаблона или включения XHTTP обновите конфиг в `configs_servers` вручную
-или через резервное копирование/восстановление (`/backup_config`).
+или через резервное копирование/восстановление (`/backup_config`), затем
+`POST /apply_config?token=...` — запись в `config.json` и перезапуск Xray.
+
+Проверка: в ответе `apply_config` поля `server_id`, `update_date` (из БД) и
+`config_path`. Если правили другую строку в `configs_servers`, чем даёт
+`Xray.hostName` → `servers.id`, на диск уйдёт не тот конфиг.
+
+Docker: смонтируйте `/usr/local/etc/xray` (как в deploy workflow), иначе
+`config.json` обновляется только внутри контейнера. Если Xray на **хосте**
+(systemd), а API в контейнере — задайте в `config.ini`:
+
+```ini
+[Paths]
+xrayConfig = /usr/local/etc/xray/config.json
+
+[Xray]
+useSystemctl = false
+restartCommand = systemctl restart xray
+```
+
+(`restartCommand` выполняется на хосте только при соответствующем mount/capability.)
 
 ## Docker
 
@@ -117,6 +137,7 @@ docker run --name manager-easy-xray-api \
   -p 8081:8081/tcp \
   -p 9443:9443/tcp \
   -v "$(pwd)/config.ini:/fastapiapp/config.ini:ro" \
+  -v /usr/local/etc/xray:/usr/local/etc/xray \
   manager-easy-xray-api:latest
 ```
 

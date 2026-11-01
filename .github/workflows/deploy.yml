@@ -137,6 +137,7 @@ jobs:
               --publish 8081:8081/tcp \
               --publish 9443:9443/tcp \
               --volume "$CONFIG_FILE:/fastapiapp/config.ini:ro" \
+              --volume /usr/local/etc/xray:/usr/local/etc/xray \
               "$image"
           }
 

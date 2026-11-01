@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import copy
 import json, asyncio
 import os
 import shutil
 import subprocess
+import time
 
 from urllib.parse import quote
 
@@ -13,7 +15,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
-from app_config import load_config
+from app_config import load_config, xray_config_file_path
 from methods.xray.config_server import ConfigServer
 
 from pydantic import BaseModel
@@ -952,36 +954,78 @@ class EasyXray:
         self._chown_if_sudo(output)
         return output
 
+    def _xray_config_path(self) -> Path:
+        return xray_config_file_path()
+
+    def _xray_use_systemctl(self) -> bool:
+        if self.config.has_section("Xray") and self.config.has_option(
+            "Xray", "useSystemctl"
+        ):
+            value = self.config.get("Xray", "useSystemctl").strip().lower()
+            return value in ("true", "1", "yes")
+        return bool(shutil.which("systemctl"))
+
+    def _xray_restart_command(self) -> str:
+        if not self.config.has_section("Xray"):
+            return ""
+        return self.config.get("Xray", "restartCommand", fallback="").strip()
+
+    def _stop_orphan_xray_processes(self, config_path: Path) -> None:
+        if not shutil.which("pkill"):
+            return
+        pattern = f"xray run -config {config_path}"
+        self._run(["pkill", "-f", pattern], check=False)
+        time.sleep(0.3)
+
     async def push(
         self,
         require_root: bool = True,
-    ) -> None:
+    ) -> Path:
         if require_root and os.geteuid() != 0:
             raise EasyXrayError(
                 "you should have root privileges for that, try"
             )
 
-        server_config = await ConfigServer.get()
+        server_config = copy.deepcopy(await ConfigServer.get())
+        config_path = self._xray_config_path()
         self._install_customgeo()
-        with open(XRAY_CONFIG_PATH, "w") as config_file:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as config_file:
             json.dump(server_config, config_file, indent=2, ensure_ascii=False)
-
-        if shutil.which("systemctl"):
-            self._run(["systemctl", "restart", "xray"], check=False)
-            return
+            config_file.flush()
+            os.fsync(config_file.fileno())
 
         self._run(
-            ["xray", "run", "-test", "-config", str(XRAY_CONFIG_PATH)],
+            ["xray", "run", "-test", "-config", str(config_path)],
         )
+
+        restart_command = self._xray_restart_command()
+        if restart_command:
+            self._run(["bash", "-c", restart_command])
+            type(self)._xray_process = None
+            return config_path
+
+        if self._xray_use_systemctl():
+            type(self).stop_xray()
+            result = self._run(["systemctl", "restart", "xray"], check=False)
+            if result.returncode != 0:
+                raise EasyXrayError(
+                    "systemctl restart xray failed "
+                    f"(exit code {result.returncode}); config written to {config_path}"
+                )
+            type(self)._xray_process = None
+            return config_path
 
         process = type(self)._xray_process
         if process is not None and process.poll() is None:
             type(self).stop_xray()
+        self._stop_orphan_xray_processes(config_path)
 
         type(self)._xray_process = subprocess.Popen(
-            ["xray", "run", "-config", str(XRAY_CONFIG_PATH)],
+            ["xray", "run", "-config", str(config_path)],
             text=True,
         )
+        return config_path
 
     def _xray_api_stats(self, name: str) -> str:
         result = self._run(

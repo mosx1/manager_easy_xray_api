@@ -8,6 +8,14 @@ from db.db import async_session
 from models.servers import Configs_Servers, Servers
 
 
+class ConfigServerNotFoundError(RuntimeError):
+    """Server or stored Xray config row could not be resolved."""
+
+
+class ConfigServerAmbiguousError(RuntimeError):
+    """Several servers match hostName from config.ini."""
+
+
 class ConfigServer:
 
     @classmethod
@@ -38,33 +46,59 @@ class ConfigServer:
 
     @classmethod
     async def get(cls) -> dict:
+        config, _, _ = await cls.get_with_meta()
+        return config
+
+    @classmethod
+    async def get_with_meta(cls) -> tuple[dict, int, datetime | None]:
         server_id = await get_id_server_by_hostname()
         async with async_session() as session:
-            configs = await session.execute(
+            row = await session.execute(
                 select(Configs_Servers).where(Configs_Servers.server_id == server_id)
             )
-            configs = configs.scalar()
+            configs = row.scalar()
             if configs is None:
-                raise RuntimeError(
-                    "Конфигурация Xray не найдена в базе данных"
+                raise ConfigServerNotFoundError(
+                    f"Конфигурация Xray не найдена в БД для server_id={server_id}"
                 )
-            if isinstance(configs.config, str):
-                return json.loads(configs.config)
-            return configs.config
+            raw = configs.config
+            if isinstance(raw, str):
+                parsed = json.loads(raw)
+            else:
+                parsed = raw
+            return parsed, server_id, configs.update_date
 
 
-async def get_id_server_by_hostname(host_name: str | None = None) -> int | None:
+async def get_id_server_by_hostname(host_name: str | None = None) -> int:
     if not host_name:
-        host_name = load_config()["Xray"].get("hostName")
-    if host_name:
-        async with async_session() as session:
-            server: Servers | None = await session.execute(
-                select(Servers).where(Servers.links.ilike(f"%{host_name}%"))
-            )
-            server = server.scalar()
-            return server.id
+        host_name = load_config()["Xray"].get("hostName", "").strip()
+    if not host_name:
+        raise ConfigServerNotFoundError(
+            "Xray.hostName не задан в config.ini — нельзя определить server_id"
+        )
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Servers).where(Servers.links.ilike(f"%{host_name}%"))
+        )
+        servers = list(result.scalars().all())
+
+    if not servers:
+        raise ConfigServerNotFoundError(
+            f"В таблице servers нет записи с links, содержащим {host_name!r}"
+        )
+    if len(servers) > 1:
+        ids = ", ".join(str(server.id) for server in servers)
+        raise ConfigServerAmbiguousError(
+            f"Несколько servers ({ids}) подходят под hostName {host_name!r}; "
+            "уточните поле links"
+        )
+    return servers[0].id
 
 
 async def backup_config_server():
-    with open("/usr/local/etc/xray/config.json", "r") as config_file:
+    from app_config import xray_config_file_path
+
+    path = xray_config_file_path()
+    with open(path, encoding="utf-8") as config_file:
         await ConfigServer.write(config_file.read())

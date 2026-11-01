@@ -38,3 +38,13 @@ def load_config() -> ConfigParser:
         )
 
     return parser
+
+
+def xray_config_file_path() -> Path:
+    """Path to Xray server config.json (override via [Paths] xrayConfig)."""
+    parser = load_config()
+    if parser.has_section("Paths"):
+        custom = parser.get("Paths", "xrayConfig", fallback="").strip()
+        if custom:
+            return Path(custom)
+    return Path("/usr/local/etc/xray/config.json")
