@@ -750,11 +750,17 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
                         "geosite:apple",
                         "geosite:private",
                         "geosite:apple",
-                        "geosite:yandex",
+                        "geosite:yandex"
+                    ],
+                    "outboundTag": "direct"
+                },
+                {
+                    "ip": [
                         "geoip:cn",
                         "geoip:ru",
                         "geoip:ir"
                     ],
+                    "type": "field",
                     "outboundTag": "direct"
                 },
                 {
