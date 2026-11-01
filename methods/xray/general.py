@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
+import json, asyncio
 import os
-import re
 import shutil
 import subprocess
+
 from urllib.parse import quote
 
 from dataclasses import dataclass, field
@@ -15,8 +15,6 @@ from typing import Any
 
 from app_config import load_config
 from methods.xray.config_server import ConfigServer
-
-from configparser import ConfigParser
 
 from pydantic import BaseModel
 class EasyXrayError(Exception):
@@ -79,10 +77,27 @@ class EasyXray:
     """Administrate xray server configs (logic ported from ex.sh)."""
 
     _xray_process: subprocess.Popen[str] | None = None
+    _xray_start_lock = asyncio.Lock()
+
 
     @classmethod
     def is_xray_running(cls) -> bool:
-        return cls._xray_process is not None and cls._xray_process.poll() is None
+        """Return whether Xray is currently running."""
+
+        if shutil.which("systemctl"):
+            try:
+                result = subprocess.run(
+                    ["systemctl", "is-active", "--quiet", "xray"],
+                    check=False,
+                    timeout=5,
+                )
+                return result.returncode == 0
+            except subprocess.TimeoutExpired:
+                return False
+
+        process = cls._xray_process
+        return process is not None and process.poll() is None
+
 
     @classmethod
     def stop_xray(cls) -> None:
@@ -620,44 +635,49 @@ class EasyXray:
                 )
         return usernames
 
+
     async def ensure_xray_running(self) -> None:
-        """Create server config if missing, install xray if needed, start the process."""
-        if os.geteuid() != 0:
-            raise EasyXrayError(
-                "you should have root privileges for that, try"
-            )
+        """Ensure that Xray is installed, configured and running."""
 
-        config_missing = False
-        try:
-            await ConfigServer.get()
-        except RuntimeError:
-            config_missing = True
+        async with type(self)._xray_start_lock:
+            # Повторная проверка обязательна:
+            # пока ожидали lock, другой запрос мог уже запустить Xray.
+            if type(self).is_xray_running():
+                return
 
-        config_updated = False
-        if config_missing:
-            await self.gen_config_server()
-            config_updated = True
-        else:
-            if await self._reconcile_legacy_inbound_tags():
+            try:
+                await ConfigServer.get()
+                config_missing = False
+            except RuntimeError:
+                config_missing = True
+
+            config_updated = False
+
+            if config_missing:
+                await self.gen_config_server()
                 config_updated = True
-            if await self._reconcile_xhttp_with_ini():
-                config_updated = True
+            else:
+                if await self._reconcile_legacy_inbound_tags():
+                    config_updated = True
+                if await self._reconcile_xhttp_with_ini():
+                    config_updated = True
 
-        self._install_customgeo()
+            self._install_customgeo()
 
-        if not shutil.which("xray"):
-            self.check_command(
-                "curl",
-                "required to download the xray installation script",
-            )
-            install_script = self._run(
-                ["curl", "-L", XRAY_INSTALL_URL],
-                capture_output=True,
-            ).stdout
-            self._run(["bash", "-c", install_script, "@", "install"])
+            if not shutil.which("xray"):
+                self.check_command(
+                    "curl",
+                    "required to download the xray installation script",
+                )
+                install_script = self._run(
+                    ["curl", "-L", XRAY_INSTALL_URL],
+                    capture_output=True,
+                ).stdout
+                self._run(["bash", "-c", install_script, "@", "install"])
 
-        if not type(self).is_xray_running() or config_updated:
-            await self.push()
+            if not type(self).is_xray_running() or config_updated:
+                await self.push()
+
 
     async def add(
         self,
