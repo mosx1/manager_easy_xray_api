@@ -50,7 +50,6 @@ async def apply_config():
         {
             "success": True,
             "server_id": server_id,
-            "update_date": update_date.isoformat() if update_date else None,
-            "config_path": str(config_path),
+            "update_date": update_date.isoformat() if update_date else None
         }
     )

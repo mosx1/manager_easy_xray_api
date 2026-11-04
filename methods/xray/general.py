@@ -323,6 +323,50 @@ class EasyXray:
         self._chown_if_sudo(path)
 
     @staticmethod
+    def _is_vless_reality_inbound(inbound: dict[str, Any]) -> bool:
+        if inbound.get("protocol") != "vless":
+            return False
+        stream = inbound.get("streamSettings") or {}
+        return bool(stream.get("realitySettings")) or stream.get("security") == "reality"
+
+    @classmethod
+    def _vless_reality_inbounds(
+        cls,
+        server_config: dict[str, Any],
+        *,
+        port: int | None = None,
+    ) -> list[dict[str, Any]]:
+        matched: list[dict[str, Any]] = []
+        for inbound in server_config.get("inbounds", []):
+            if not cls._is_vless_reality_inbound(inbound):
+                continue
+            if port is not None and inbound.get("port") != port:
+                continue
+            matched.append(inbound)
+        return matched
+
+    @classmethod
+    def _ensure_canonical_reality_tags(cls, inbounds: list[dict[str, Any]], set_tag) -> None:
+        """Retag VLESS REALITY inbounds when legacy configs use other tag names."""
+        if not any(inbound.get("tag") == "reality-443" for inbound in inbounds):
+            candidates = [
+                inbound
+                for inbound in inbounds
+                if cls._is_vless_reality_inbound(inbound) and inbound.get("port") != 80
+            ]
+            if candidates:
+                preferred = next(
+                    (inbound for inbound in candidates if inbound.get("port") == 443),
+                    candidates[0],
+                )
+                set_tag(preferred, "reality-443")
+
+        if not any(inbound.get("tag") == "reality-80" for inbound in inbounds):
+            candidates = cls._vless_reality_inbounds({"inbounds": inbounds}, port=80)
+            if candidates:
+                set_tag(candidates[0], "reality-80")
+
+    @staticmethod
     def _migrate_legacy_inbound_tags(server_config: dict[str, Any]) -> bool:
         """Assign tags on configs created before template used reality-443 / reality-80."""
         inbounds = server_config.get("inbounds", [])
@@ -353,27 +397,20 @@ class EasyXray:
                 set_tag(inbound, "xhttp")
             elif network == "grpc":
                 set_tag(inbound, "grpc")
-            elif stream.get("realitySettings") or stream.get("security") == "reality":
+            elif EasyXray._is_vless_reality_inbound(inbound):
                 set_tag(inbound, "reality-80" if port == 80 else "reality-443")
 
-        if not any(inbound.get("tag") == "reality-443" for inbound in inbounds):
-            tagged_reality_443 = False
+        EasyXray._ensure_canonical_reality_tags(inbounds, set_tag)
+
+        if not any(inbound.get("tag") == "xhttp" for inbound in inbounds):
             for inbound in inbounds:
-                if inbound.get("tag"):
-                    continue
                 stream = inbound.get("streamSettings") or {}
-                if inbound.get("protocol") == "vless" and stream.get("realitySettings"):
-                    set_tag(
-                        inbound,
-                        "reality-80" if inbound.get("port") == 80 else "reality-443",
-                    )
-                    tagged_reality_443 = inbound.get("tag") == "reality-443"
+                if (
+                    inbound.get("protocol") == "vless"
+                    and stream.get("network") == "xhttp"
+                ):
+                    set_tag(inbound, "xhttp")
                     break
-            if not tagged_reality_443 and len(inbounds) > 1 and inbounds[1].get("protocol") == "vless":
-                set_tag(inbounds[1], "reality-443")
-            if len(inbounds) > 2 and inbounds[2].get("protocol") == "vless":
-                if not inbounds[2].get("tag"):
-                    set_tag(inbounds[2], "reality-80")
 
         return changed
 
@@ -696,6 +733,8 @@ class EasyXray:
         await self.ensure_xray_running()
 
         server_config: dict = await ConfigServer.get()
+        if self._migrate_legacy_inbound_tags(server_config):
+            await ConfigServer.write(server_config)
         xray_section = self.config["Xray"]
         xhttp_enabled = self._xhttp_enabled()
         xhttp_inbound: dict[str, Any] | None = None
