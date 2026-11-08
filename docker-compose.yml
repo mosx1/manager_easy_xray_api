@@ -1,0 +1,17 @@
+services:
+  manager-easy-xray-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: manager-easy-xray-api:latest
+    container_name: manager-easy-xray-api
+    restart: unless-stopped
+    ports:
+      - "443:443/tcp"
+      - "8081:8081/tcp"
+      - "9443:9443/tcp"
+    volumes:
+      # На сервере: config.ini рядом с compose или, например:
+      # /opt/manager-easy-xray-api/config.ini:/fastapiapp/config.ini:ro
+      - ./config.ini:/fastapiapp/config.ini:ro
+      - /usr/local/etc/xray:/usr/local/etc/xray
