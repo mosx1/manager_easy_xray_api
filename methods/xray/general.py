@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import ipaddress
 import json, asyncio
 import os
 import shutil
@@ -527,7 +528,13 @@ class EasyXray:
         xhttp["streamSettings"]["xhttpSettings"]["path"] = path
         self._sync_xhttp_clients_from_reality(server_config)
 
-    def _write_xhttp_nginx_site(self, path: str | None = None) -> None:
+    def _write_xhttp_nginx_site(
+        self,
+        path: str | None = None,
+        *,
+        certificate: str | None = None,
+        key: str | None = None,
+    ) -> None:
         template_path = self.templates_dir / "template_nginx_xhttp.conf"
         if not template_path.is_file():
             raise EasyXrayError(f"nginx template not found: {template_path}")
@@ -539,6 +546,15 @@ class EasyXray:
         content = content.replace("public_port", str(self._xhttp_public_port()))
         content = content.replace("internal_port", str(self._xhttp_internal_port()))
         content = content.replace("xhttp_path", path)
+        if certificate and key:
+            content = content.replace(
+                f"/etc/letsencrypt/live/{domain}/fullchain.pem",
+                certificate,
+            )
+            content = content.replace(
+                f"/etc/letsencrypt/live/{domain}/privkey.pem",
+                key,
+            )
 
         self.unsafe_mkdir(self.conf_dir)
         site_path = self.conf_dir / f"nginx_xhttp_{domain}.conf"
@@ -640,7 +656,9 @@ class EasyXray:
             if not self._xray_config_path().is_file():
                 self._write_local_server_config(self._build_fresh_server_config())
             return self._load_local_server_config()
-        return await ConfigServer.get()
+        server_config = await ConfigServer.get()
+        self._drop_unsupported_geoip(server_config)
+        return server_config
 
     async def store_server_config(self, server_config: dict[str, Any]) -> None:
         if await self.use_local_server_config():
@@ -876,9 +894,12 @@ class EasyXray:
         """Read Xray config from disk. Does not touch the database."""
         path = self._xray_config_path()
         if not path.is_file():
-            return self._build_fresh_server_config()
+            server_config = self._build_fresh_server_config()
+            self._drop_unsupported_geoip(server_config)
+            return server_config
         server_config = json.loads(path.read_text(encoding="utf-8"))
         self._migrate_legacy_inbound_tags(server_config)
+        self._drop_unsupported_geoip(server_config)
         return server_config
 
     def _ensure_transit_xhttp_inbound(self, server_config: dict[str, Any]) -> dict[str, Any]:
@@ -978,26 +999,99 @@ class EasyXray:
         settings.setdefault("decryption", "none")
         return inbound
 
-    def _require_tls_certificate_files(self, tls_inbound: dict[str, Any]) -> None:
-        certificates = (
-            tls_inbound.get("streamSettings", {})
-            .get("tlsSettings", {})
-            .get("certificates", [])
+    @staticmethod
+    def _drop_unsupported_geoip(server_config: dict[str, Any]) -> None:
+        """Drop geoip:by. Current Xray geoip.dat has no BY entry and xray -test exits."""
+        routing = server_config.get("routing")
+        if not isinstance(routing, dict) or not isinstance(routing.get("rules"), list):
+            return
+        kept_rules: list[dict[str, Any]] = []
+        for rule in routing["rules"]:
+            addresses = rule.get("ip")
+            if isinstance(addresses, list):
+                filtered = [
+                    item
+                    for item in addresses
+                    if not (isinstance(item, str) and item.lower() == "geoip:by")
+                ]
+                if len(filtered) != len(addresses):
+                    if not filtered:
+                        continue
+                    rule["ip"] = filtered
+            kept_rules.append(rule)
+        routing["rules"] = kept_rules
+
+    @staticmethod
+    def _certificate_san(domain: str) -> str:
+        try:
+            ipaddress.ip_address(domain)
+        except ValueError:
+            return f"DNS:{domain}"
+        return f"IP:{domain}"
+
+    def _generated_tls_paths(self) -> tuple[Path, Path]:
+        directory = self._xray_config_path().parent / "tls"
+        return directory / "fullchain.pem", directory / "privkey.pem"
+
+    def _generate_self_signed_certificate(
+        self,
+        certificate: Path,
+        key: Path,
+        domain: str,
+    ) -> None:
+        certificate.parent.mkdir(parents=True, exist_ok=True)
+        self._run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-sha256",
+                "-days",
+                "3650",
+                "-nodes",
+                "-keyout",
+                str(key),
+                "-out",
+                str(certificate),
+                "-subj",
+                f"/CN={domain}",
+                "-addext",
+                f"subjectAltName={self._certificate_san(domain)}",
+            ]
         )
-        missing: list[str] = []
-        for item in certificates:
-            for field_name in ("certificateFile", "keyFile"):
-                file_path = str(item.get(field_name) or "").strip()
-                if not file_path or not Path(file_path).is_file():
-                    missing.append(file_path or field_name)
-        if missing:
-            raise EasyXrayError(
-                "TLS-сертификаты не найдены: "
-                + ", ".join(missing)
-                + ". Укажите [Tls] certificate и key в config.ini "
-                "(по умолчанию /etc/letsencrypt/live/<domain>/). "
-                "Файлы должны быть доступны процессу Xray."
-            )
+
+    def _ensure_tls_certificate_files(self, tls_inbound: dict[str, Any]) -> bool:
+        """Point the TLS inbound at readable certificates.
+
+        Returns True when a self-signed certificate was created because the
+        configured files were missing.
+        """
+        tls_settings = tls_inbound.setdefault("streamSettings", {}).setdefault(
+            "tlsSettings", {}
+        )
+        certificates = tls_settings.get("certificates") or []
+        if certificates and all(
+            Path(str(item.get("certificateFile") or "")).is_file()
+            and Path(str(item.get("keyFile") or "")).is_file()
+            for item in certificates
+        ):
+            return False
+
+        domain = self._tls_domain()
+        if not domain:
+            raise EasyXrayError("не задан домен TLS: [Tls] domain или Xray.hostName")
+        certificate, key = self._generated_tls_paths()
+        if not certificate.is_file() or not key.is_file():
+            self._generate_self_signed_certificate(certificate, key, domain)
+        tls_settings["certificates"] = [
+            {
+                "certificateFile": str(certificate),
+                "keyFile": str(key),
+            }
+        ]
+        return True
 
     @staticmethod
     def _client_by_email(inbound: dict[str, Any], email: str) -> dict[str, Any] | None:
@@ -1037,11 +1131,18 @@ class EasyXray:
         user_id: str,
         email: str,
         xhttp_inbound: dict[str, Any],
+        allow_insecure: bool = False,
     ) -> dict[str, Any]:
         domain = self._xhttp_domain()
         if not domain:
             raise EasyXrayError("не задан домен XHTTP: [Xhttp] domain или Xray.hostName")
         xhttp_settings = xhttp_inbound["streamSettings"]["xhttpSettings"]
+        tls_settings: dict[str, Any] = {
+            "serverName": domain,
+            "fingerprint": "chrome",
+        }
+        if allow_insecure:
+            tls_settings["allowInsecure"] = True
         return {
             "tag": "transit-xhttp",
             "protocol": "vless",
@@ -1063,10 +1164,7 @@ class EasyXray:
             "streamSettings": {
                 "network": "xhttp",
                 "security": "tls",
-                "tlsSettings": {
-                    "serverName": domain,
-                    "fingerprint": "chrome",
-                },
+                "tlsSettings": tls_settings,
                 "xhttpSettings": {
                     "path": xhttp_settings["path"],
                     "mode": xhttp_settings.get("mode") or self._xhttp_mode(),
@@ -1080,10 +1178,17 @@ class EasyXray:
         user_id: str,
         email: str,
         tls_inbound: dict[str, Any],
+        allow_insecure: bool = False,
     ) -> dict[str, Any]:
         domain = self._tls_domain()
         if not domain:
             raise EasyXrayError("не задан домен TLS: [Tls] domain или Xray.hostName")
+        tls_settings: dict[str, Any] = {
+            "serverName": domain,
+            "fingerprint": "chrome",
+        }
+        if allow_insecure:
+            tls_settings["allowInsecure"] = True
         flow = "xtls-rprx-vision"
         client = self._client_by_email(tls_inbound, email)
         if client and client.get("flow"):
@@ -1110,10 +1215,7 @@ class EasyXray:
             "streamSettings": {
                 "network": "tcp",
                 "security": "tls",
-                "tlsSettings": {
-                    "serverName": domain,
-                    "fingerprint": "chrome",
-                },
+                "tlsSettings": tls_settings,
             },
         }
 
@@ -1132,7 +1234,7 @@ class EasyXray:
         server_config = self._load_local_server_config()
         xhttp_inbound = self._ensure_transit_xhttp_inbound(server_config)
         tls_inbound = self._ensure_transit_tls_inbound(server_config)
-        self._require_tls_certificate_files(tls_inbound)
+        self_signed = self._ensure_tls_certificate_files(tls_inbound)
 
         xhttp_client = self._client_by_email(xhttp_inbound, email)
         tls_client = self._client_by_email(tls_inbound, email)
@@ -1153,7 +1255,16 @@ class EasyXray:
             email=email,
             flow="xtls-rprx-vision",
         )
-        self._write_xhttp_nginx_site(xhttp_inbound["streamSettings"]["xhttpSettings"]["path"])
+        certificate = key = None
+        if self_signed:
+            certificates = tls_inbound["streamSettings"]["tlsSettings"]["certificates"]
+            certificate = certificates[0]["certificateFile"]
+            key = certificates[0]["keyFile"]
+        self._write_xhttp_nginx_site(
+            xhttp_inbound["streamSettings"]["xhttpSettings"]["path"],
+            certificate=certificate,
+            key=key,
+        )
         await self.push(server_config=server_config)
         return {
             "user_id": username,
@@ -1163,11 +1274,13 @@ class EasyXray:
                 user_id=user_id,
                 email=email,
                 xhttp_inbound=xhttp_inbound,
+                allow_insecure=self_signed,
             ),
             "tls": self._transit_tls_outbound(
                 user_id=user_id,
                 email=email,
                 tls_inbound=tls_inbound,
+                allow_insecure=self_signed,
             ),
         }
 
@@ -1390,6 +1503,7 @@ class EasyXray:
             server_config = copy.deepcopy(await self.load_server_config())
         else:
             server_config = copy.deepcopy(server_config)
+        self._drop_unsupported_geoip(server_config)
         config_path = self._xray_config_path()
         self._install_customgeo()
         config_path.parent.mkdir(parents=True, exist_ok=True)

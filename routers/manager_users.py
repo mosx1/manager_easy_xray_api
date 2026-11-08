@@ -49,8 +49,9 @@ async def add_user(user_id: int) -> dict:
         "трафик шёл через этот узел. "
         "XHTTP слушает внутренний порт (по умолчанию 9443), наружу его "
         "отдаёт nginx на `public_port` (8443). "
-        "TLS — VLESS TCP на порту `[Tls] port` (по умолчанию 2053), "
-        "сертификат Let's Encrypt для домена. "
+        "TLS — VLESS TCP на порту `[Tls] port` (по умолчанию 2053). "
+        "Если сертификата нет, создаётся самоподписанный, а в outbound "
+        "ставится allowInsecure. "
         "Query: `user_id`, `token`."
     ),
     dependencies=[Depends(require_query_auth)],
