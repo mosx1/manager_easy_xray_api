@@ -97,7 +97,6 @@
             "domain:ru",
             // punycode for cyrillic Russian top-level domain .рф
             "domain:xn--p1ai",
-            "domain:by",
             // punycode for national Belorussian top-level domain .бел
             "domain:xn--90ais",
             "domain:ir",
@@ -111,7 +110,6 @@
         "ip": [
             "geoip:cn",
             "geoip:ru",
-            "geoip:by",
             "geoip:ir"
         ],
         "outboundTag": "block"

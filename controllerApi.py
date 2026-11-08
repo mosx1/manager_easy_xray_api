@@ -743,7 +743,6 @@ def _client_link_config(user_id, public_key, server_name, short_id, host_name):
                         "domain:xn--io0a7i",
                         "domain:ru",
                         "domain:xn--p1ai",
-                        "domain:by",
                         "domain:xn--90ais",
                         "domain:ir",
                         "geosite:apple",
