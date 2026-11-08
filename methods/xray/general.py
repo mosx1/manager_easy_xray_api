@@ -16,7 +16,11 @@ from collections.abc import Sequence
 from typing import Any
 
 from app_config import load_config, xray_config_file_path
-from methods.xray.config_server import ConfigServer
+from methods.xray.config_server import (
+    ConfigServer,
+    ConfigServerNotFoundError,
+    get_id_server_by_hostname,
+)
 
 from pydantic import BaseModel
 class EasyXrayError(Exception):
@@ -130,6 +134,7 @@ class EasyXray:
         self.stats_log = self.root / "stats.log"
         self.templates_dir = self.root / "templates"
         self.config = load_config()
+        self._use_local_cached: bool | None = None
 
     # ------------------------------------------------------------------
     # Utility helpers
@@ -604,13 +609,61 @@ class EasyXray:
             self._remove_inbound_by_tag(server_config, "xhttp")
         return server_config
 
+    def _local_config_enabled(self) -> bool:
+        if not self.config.has_option("Xray", "localConfig"):
+            return False
+        return self.config.get("Xray", "localConfig").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+    async def use_local_server_config(self) -> bool:
+        """Local file instead of configs_servers when this host is absent from servers."""
+        if self._use_local_cached is not None:
+            return self._use_local_cached
+        if not self._local_config_enabled():
+            self._use_local_cached = False
+            return False
+
+        try:
+            await get_id_server_by_hostname()
+        except ConfigServerNotFoundError:
+            self._use_local_cached = True
+            return True
+        self._use_local_cached = False
+        return False
+
+    async def load_server_config(self) -> dict[str, Any]:
+        if await self.use_local_server_config():
+            if not self._xray_config_path().is_file():
+                self._write_local_server_config(self._build_fresh_server_config())
+            return self._load_local_server_config()
+        return await ConfigServer.get()
+
+    async def store_server_config(self, server_config: dict[str, Any]) -> None:
+        if await self.use_local_server_config():
+            self._write_local_server_config(server_config)
+            return
+        await ConfigServer.write(server_config)
+
+    def _write_local_server_config(self, server_config: dict[str, Any]) -> None:
+        path = self._xray_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(server_config, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        self._chown_if_sudo(path)
+
     async def gen_config_server(self, params: ConfParams | None = None) -> None:
         self.unsafe_mkdir(self.conf_dir)
-        await ConfigServer.write(self._build_fresh_server_config())
+        await self.store_server_config(self._build_fresh_server_config())
 
     async def _reconcile_xhttp_with_ini(self) -> bool:
         """Align xhttp inbound in DB config with [Xhttp] in config.ini."""
-        server_config = await ConfigServer.get()
+        server_config = await self.load_server_config()
         has_xhttp = any(
             inbound.get("tag") == "xhttp"
             for inbound in server_config.get("inbounds", [])
@@ -626,21 +679,21 @@ class EasyXray:
                 )
             self._apply_xhttp_inbound(server_config)
             self._write_xhttp_nginx_site()
-            await ConfigServer.write(server_config)
+            await self.store_server_config(server_config)
             return True
 
         if has_xhttp:
             self._remove_inbound_by_tag(server_config, "xhttp")
-            await ConfigServer.write(server_config)
+            await self.store_server_config(server_config)
             return True
 
         return False
 
     async def _reconcile_legacy_inbound_tags(self) -> bool:
-        server_config = await ConfigServer.get()
+        server_config = await self.load_server_config()
         if not self._migrate_legacy_inbound_tags(server_config):
             return False
-        await ConfigServer.write(server_config)
+        await self.store_server_config(server_config)
         return True
 
     # ------------------------------------------------------------------
@@ -689,11 +742,14 @@ class EasyXray:
             if type(self).is_xray_running():
                 return
 
-            try:
-                await ConfigServer.get()
-                config_missing = False
-            except RuntimeError:
-                config_missing = True
+            if await self.use_local_server_config():
+                config_missing = not self._xray_config_path().is_file()
+            else:
+                try:
+                    await ConfigServer.get()
+                    config_missing = False
+                except RuntimeError:
+                    config_missing = True
 
             config_updated = False
 
@@ -737,9 +793,9 @@ class EasyXray:
 
         await self.ensure_xray_running()
 
-        server_config: dict = await ConfigServer.get()
+        server_config: dict = await self.load_server_config()
         if self._migrate_legacy_inbound_tags(server_config):
-            await ConfigServer.write(server_config)
+            await self.store_server_config(server_config)
         xray_section = self.config["Xray"]
         xhttp_enabled = self._xhttp_enabled()
         xhttp_inbound: dict[str, Any] | None = None
@@ -812,7 +868,7 @@ class EasyXray:
             links.append(UserLinks(reality=reality_link, xhttp=xhttp_link))
 
         if update:
-            await ConfigServer.write(server_config)
+            await self.store_server_config(server_config)
             await self.push()
         return links
 
@@ -820,7 +876,6 @@ class EasyXray:
         """Read Xray config from disk. Does not touch the database."""
         path = self._xray_config_path()
         if not path.is_file():
-            self.unsafe_mkdir(self.conf_dir)
             return self._build_fresh_server_config()
         server_config = json.loads(path.read_text(encoding="utf-8"))
         self._migrate_legacy_inbound_tags(server_config)
@@ -1124,7 +1179,7 @@ class EasyXray:
             raise EasyXrayError("usernames not set")
 
         for username in usernames:
-            server_config = await ConfigServer.get()
+            server_config = await self.load_server_config()
             email = f"{username}@example.com"
             reality = self._inbound_by_tag(server_config, "reality-443")
             clients = reality["settings"]["clients"]
@@ -1146,7 +1201,7 @@ class EasyXray:
                     if client.get("email") != email
                 ]
 
-            await ConfigServer.write(server_config)
+            await self.store_server_config(server_config)
             await self.push()
 
 
@@ -1332,7 +1387,7 @@ class EasyXray:
             )
 
         if server_config is None:
-            server_config = copy.deepcopy(await ConfigServer.get())
+            server_config = copy.deepcopy(await self.load_server_config())
         else:
             server_config = copy.deepcopy(server_config)
         config_path = self._xray_config_path()

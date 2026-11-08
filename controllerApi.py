@@ -1,7 +1,6 @@
 import subprocess, json, os
 
 from app_config import load_config
-from methods.xray.config_server import ConfigServer
 from methods.xray.general import EasyXray, EasyXrayError
 
 
@@ -909,7 +908,7 @@ async def create_link(userId: str):
     id = None
     short_id = None
     config = load_config()
-    server_config = await ConfigServer.get()
+    server_config = await EasyXray().load_server_config()
     reality = EasyXray._inbound_by_tag(server_config, "reality-443")
     clients = reality["settings"]["clients"]
     short_ids = reality["streamSettings"]["realitySettings"]["shortIds"]
@@ -937,7 +936,7 @@ async def create_xhttp_link(userId: str) -> str:
     if not easy_xray._xhttp_enabled():
         raise EasyXrayError("XHTTP is disabled in config.ini ([Xhttp] enabled)")
 
-    server_config = await ConfigServer.get()
+    server_config = await easy_xray.load_server_config()
     user_uuid = _user_uuid_from_server_config(server_config, userId)
     if not user_uuid:
         raise EasyXrayError(f"user {userId!r} not found in server config")
