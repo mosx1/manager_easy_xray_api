@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     ports:
       - "443:443/tcp"
+      - "2053:2053/tcp"
       - "8081:8081/tcp"
       - "9443:9443/tcp"
     volumes:
@@ -15,3 +16,4 @@ services:
       # /opt/manager-easy-xray-api/config.ini:/fastapiapp/config.ini:ro
       - ./config.ini:/fastapiapp/config.ini:ro
       - /usr/local/etc/xray:/usr/local/etc/xray
+      - /etc/letsencrypt:/etc/letsencrypt:ro

@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from controllerApi import create_link, create_xhttp_link
 from deps.auth import authenticated_body, require_query_auth
@@ -35,6 +36,35 @@ async def add_user(user_id: int) -> dict:
         except EasyXrayError:
             pass
     return response
+
+
+@router.get(
+    "/add_transit",
+    summary="Добавить транзитного пользователя Xray без записи в БД",
+    description=(
+        "Добавляет пользователя только в локальный config.json Xray. "
+        "Строка сервера в БД не нужна. "
+        "Возвращает два outbound — `xhttp` и `tls` — их нужно вставить в "
+        "`outbounds` другого сервера и направить на них routing, чтобы "
+        "трафик шёл через этот узел. "
+        "XHTTP слушает внутренний порт (по умолчанию 9443), наружу его "
+        "отдаёт nginx на `public_port` (8443). "
+        "TLS — VLESS TCP на порту `[Tls] port` (по умолчанию 2053), "
+        "сертификат Let's Encrypt для домена. "
+        "Query: `user_id`, `token`."
+    ),
+    dependencies=[Depends(require_query_auth)],
+)
+async def add_transit_user(user_id: str):
+    easy_xray = EasyXray()
+    try:
+        created = await easy_xray.add_transit_user(user_id)
+    except EasyXrayError as error:
+        return JSONResponse(
+            {"success": False, "error": str(error)},
+            status_code=400,
+        )
+    return {"success": True, **created}
 
 
 @router.post("/del", summary="Удалить пользователей из Xray")
