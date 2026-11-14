@@ -1172,6 +1172,18 @@ class EasyXray:
             },
         }
 
+    def _transit_reality_outbound_tag(self) -> str:
+        if self.config.has_section("Transit"):
+            tag = self.config["Transit"].get("reality_outbound_tag", "").strip()
+            if tag:
+                return tag
+        return "russianOut"
+
+    def _reality_listen_port(self, reality_inbound: dict[str, Any]) -> int:
+        if reality_inbound.get("port") is not None:
+            return int(reality_inbound["port"])
+        return int(self.config["Xray"].get("port", "443"))
+
     def _upsert_reality_client(
         self,
         reality_inbound: dict[str, Any],
@@ -1179,16 +1191,23 @@ class EasyXray:
         user_id: str,
         email: str,
     ) -> str:
-        clients: list[dict[str, Any]] = reality_inbound["settings"]["clients"]
-        short_ids: list[str] = reality_inbound["streamSettings"]["realitySettings"][
-            "shortIds"
-        ]
+        clients: list[dict[str, Any]] = reality_inbound.setdefault(
+            "settings", {}
+        ).setdefault("clients", [])
+        reality = reality_inbound.setdefault("streamSettings", {}).setdefault(
+            "realitySettings", {}
+        )
+        short_ids: list[str] = reality.setdefault("shortIds", [])
         for index, client in enumerate(clients):
             if client.get("email") != email:
                 continue
             client["id"] = user_id
             client["flow"] = "xtls-rprx-vision"
-            return short_ids[index]
+            if index < len(short_ids):
+                return short_ids[index]
+            short_id = self._openssl_rand_hex(8)
+            short_ids.append(short_id)
+            return short_id
         short_id = self._openssl_rand_hex(8)
         clients.append(
             {
@@ -1200,38 +1219,48 @@ class EasyXray:
         short_ids.append(short_id)
         return short_id
 
-    def _transit_reality_outbound_tag(self) -> str:
-        if self.config.has_option("Xray", "transitRealityOutboundTag"):
-            tag = self.config.get("Xray", "transitRealityOutboundTag").strip()
-            if tag:
-                return tag
-        return "russianOut"
+    def _nginx_tls_certificate_paths(
+        self,
+    ) -> tuple[str | None, str | None, bool]:
+        """Certificate paths for host nginx in front of XHTTP."""
+        domain = self._xhttp_domain()
+        default_cert = Path(f"/etc/letsencrypt/live/{domain}/fullchain.pem")
+        default_key = Path(f"/etc/letsencrypt/live/{domain}/privkey.pem")
+        if default_cert.is_file() and default_key.is_file():
+            return str(default_cert), str(default_key), False
 
-    def _transit_reality_outbound(
+        certificate, key = self._generated_tls_paths()
+        if not certificate.is_file() or not key.is_file():
+            if not domain:
+                return None, None, False
+            self._generate_self_signed_certificate(certificate, key, domain)
+        return str(certificate), str(key), True
+
+    def _transit_tls_outbound(
         self,
         *,
         user_id: str,
         email: str,
         short_id: str,
+        reality_inbound: dict[str, Any],
     ) -> dict[str, Any]:
         xray_section = self.config["Xray"]
         address = xray_section.get("hostName", "").strip()
-        if not address:
-            raise EasyXrayError("Xray.hostName не задан в config.ini")
         public_key = xray_section.get("public_key", "").strip()
-        if not public_key:
-            raise EasyXrayError("Xray.public_key не задан в config.ini")
         fake_site = xray_section.get("fake_site", "").strip()
+        if not address:
+            raise EasyXrayError("не задан Xray.hostName")
+        if not public_key:
+            raise EasyXrayError("не задан Xray.public_key")
         if not fake_site:
-            raise EasyXrayError("Xray.fake_site не задан в config.ini")
-        port = int(xray_section.get("port", "443"))
+            raise EasyXrayError("не задан Xray.fake_site")
         return {
             "tag": self._transit_reality_outbound_tag(),
             "protocol": "vless",
             "settings": {
                 "vnext": [
                     {
-                        "port": port,
+                        "port": self._reality_listen_port(reality_inbound),
                         "users": [
                             {
                                 "id": user_id,
@@ -1270,36 +1299,33 @@ class EasyXray:
 
         email = f"{username}@example.com"
         server_config = self._load_local_server_config()
-        if self._migrate_legacy_inbound_tags(server_config):
-            await self.store_server_config(server_config)
         xhttp_inbound = self._ensure_transit_xhttp_inbound(server_config)
         reality_inbound = self._inbound_by_tag(server_config, "reality-443")
 
         xhttp_client = self._client_by_email(xhttp_inbound, email)
         reality_client = self._client_by_email(reality_inbound, email)
         user_id = None
-        if xhttp_client and xhttp_client.get("id"):
-            user_id = xhttp_client["id"]
-        elif reality_client and reality_client.get("id"):
+        if reality_client and reality_client.get("id"):
             user_id = reality_client["id"]
+        elif xhttp_client and xhttp_client.get("id"):
+            user_id = xhttp_client["id"]
         else:
             user_id = self._xray_uuid()
 
-        self._upsert_vless_client(
-            xhttp_inbound, user_id=user_id, email=email, flow=None
-        )
         short_id = self._upsert_reality_client(
             reality_inbound,
             user_id=user_id,
             email=email,
         )
-        if self._xhttp_enabled():
-            self._sync_xhttp_clients_from_reality(server_config)
+        self._sync_xhttp_clients_from_reality(server_config)
+
+        certificate, key, allow_insecure = self._nginx_tls_certificate_paths()
         self._write_xhttp_nginx_site(
             xhttp_inbound["streamSettings"]["xhttpSettings"]["path"],
+            certificate=certificate,
+            key=key,
         )
         await self.push(server_config=server_config)
-        self_signed = False
         return {
             "user_id": username,
             "uuid": user_id,
@@ -1308,12 +1334,13 @@ class EasyXray:
                 user_id=user_id,
                 email=email,
                 xhttp_inbound=xhttp_inbound,
-                allow_insecure=self_signed,
+                allow_insecure=allow_insecure,
             ),
-            "tls": self._transit_reality_outbound(
+            "tls": self._transit_tls_outbound(
                 user_id=user_id,
                 email=email,
                 short_id=short_id,
+                reality_inbound=reality_inbound,
             ),
         }
 

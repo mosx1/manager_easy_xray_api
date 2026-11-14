@@ -49,9 +49,9 @@ async def add_user(user_id: int) -> dict:
         "трафик шёл через этот узел. "
         "XHTTP слушает внутренний порт (по умолчанию 9443), наружу его "
         "отдаёт nginx на `public_port` (8443). "
-        "`tls` — outbound VLESS REALITY на `Xray.port` (443): hostName, "
-        "public_key, fake_site из config.ini; тег по умолчанию `russianOut` "
-        "(переопределяется `Xray.transitRealityOutboundTag`). "
+        "`tls` — VLESS REALITY на порту `Xray.port` (443): tag по умолчанию "
+        "`russianOut` (`[Transit] reality_outbound_tag`). Поля из config.ini и "
+        "inbound `reality-443`. "
         "Query: `user_id`, `token`."
     ),
     dependencies=[Depends(require_query_auth)],
