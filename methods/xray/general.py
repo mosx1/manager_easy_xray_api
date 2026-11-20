@@ -1375,7 +1375,7 @@ class EasyXray:
                 ]
 
             await self.store_server_config(server_config)
-            await self.push()
+        await self.push()
 
 
     def import_users(self, from_dir: str | Path, to_dir: str | Path) -> list[str]:
