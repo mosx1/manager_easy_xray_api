@@ -1350,9 +1350,8 @@ class EasyXray:
     ) -> None:
         if not usernames:
             raise EasyXrayError("usernames not set")
-
+        server_config = await self.load_server_config()
         for username in usernames:
-            server_config = await self.load_server_config()
             email = f"{username}@example.com"
             reality = self._inbound_by_tag(server_config, "reality-443")
             clients = reality["settings"]["clients"]
@@ -1374,7 +1373,7 @@ class EasyXray:
                     if client.get("email") != email
                 ]
 
-            await self.store_server_config(server_config)
+        await self.store_server_config(server_config)
         await self.push()
 
 
